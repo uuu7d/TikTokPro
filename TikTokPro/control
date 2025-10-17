@@ -1,9 +1,0 @@
-Package: com.yourname.tiktokpro
-Name: TikTokPro
-Version: 1.0.0
-Architecture: iphoneos-arm64e
-Description: All in one tweak for TikTok.
-Maintainer: Your Name
-Author: Your Name
-Section: Tweaks
-Depends: mobilesubstrate, com.zhiliaoapp.musically
