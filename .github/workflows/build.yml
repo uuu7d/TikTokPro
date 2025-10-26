@@ -1,4 +1,4 @@
-name: Build Theos Tweak
+name: Build Theos Tweak (with Cache)
 
 on:
   push:
@@ -18,37 +18,53 @@ jobs:
       THEOS: ${{ github.workspace }}/theos
 
     steps:
+      # 1️⃣ سحب الكود من المستودع
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # 2️⃣ تثبيت الأدوات المطلوبة
       - name: Install dependencies
         run: |
           brew install dpkg ldid
           sudo xcode-select --switch /Applications/Xcode.app
 
-      - name: Clone Theos
-        run: |
-          # حذف أي نسخة سابقة إن وجدت
-          rm -rf $THEOS
-          git clone --recursive https://github.com/theos/theos.git $THEOS
-          echo "THEOS path: $THEOS"
+      # 3️⃣ استعادة ذاكرة التخزين المؤقت لـ Theos و SDKs (إن وجدت)
+      - name: Restore Theos & SDKs cache
+        id: cache-theos
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ github.workspace }}/theos
+            ${{ github.workspace }}/theos/sdks
+          key: theos-${{ runner.os }}-${{ hashFiles('**/Makefile') }}
+          restore-keys: |
+            theos-${{ runner.os }}-
 
+      # 4️⃣ تنزيل Theos فقط إذا لم يكن موجودًا مسبقًا
+      - name: Clone Theos (if not cached)
+        if: steps.cache-theos.outputs.cache-hit != 'true'
+        run: |
+          git clone --recursive https://github.com/theos/theos.git $THEOS
+          mkdir -p $THEOS/vendor
+          git clone --recursive https://github.com/theos/sdks.git $THEOS/sdks
+          echo "Theos cloned successfully!"
+
+      # 5️⃣ إعداد البيئة
       - name: Set up environment
         run: |
           echo "export THEOS=$THEOS" >> $HOME/.bash_profile
           export THEOS=$THEOS
+          echo "Environment configured successfully."
 
-          # حذف مجلد sdks إن كان موجودًا لتجنب الخطأ
-          rm -rf $THEOS/sdks
-
-          mkdir -p $THEOS/vendor
-          git clone --recursive https://github.com/theos/sdks.git $THEOS/sdks
-
+      # 6️⃣ بناء الأداة
       - name: Build tweak (package)
         run: |
           make clean
           make package
+        env:
+          THEOS: ${{ github.workspace }}/theos
 
+      # 7️⃣ رفع الحزمة الناتجة كملف Artifact
       - name: Upload .deb artifact
         uses: actions/upload-artifact@v4
         with:
