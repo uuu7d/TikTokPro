@@ -1,11 +1,72 @@
 #import <UIKit/UIKit.h>
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
+#pragma mark - SandboxTool
+
 @interface SandboxTool : NSObject <UIDocumentPickerDelegate>
 @property (nonatomic, strong) UIDocumentPickerViewController *picker;
+- (void)openFilePicker;
 @end
 
 @implementation SandboxTool
+
+- (void)openFilePicker {
+    self.picker = [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:@[[UTType item]]];
+    self.picker.delegate = self;
+    self.picker.allowsMultipleSelection = NO;
+
+    UIWindow *window = nil;
+    if (@available(iOS 13.0, *)) {
+        for (UIWindowScene *scene in [UIApplication sharedApplication].connectedScenes) {
+            if (scene.activationState == UISceneActivationStateForegroundActive) {
+                window = scene.windows.firstObject;
+                break;
+            }
+        }
+    } else {
+        window = [UIApplication sharedApplication].keyWindow;
+    }
+    if (!window) return;
+
+    [window.rootViewController presentViewController:self.picker animated:YES completion:nil];
+}
+
+// عند اختيار ملف
+- (void)documentPicker:(UIDocumentPickerViewController *)controller didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
+    NSURL *fileURL = urls.firstObject;
+    if (!fileURL) return;
+
+    NSString *filePath = [fileURL path];
+    NSLog(@"[SandboxTool] File selected: %@", filePath);
+
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"📂 تم اختيار ملف"
+                                                                   message:filePath
+                                                            preferredStyle:UIAlertControllerStyleAlert];
+    UIAlertAction *ok = [UIAlertAction actionWithTitle:@"موافق" style:UIAlertActionStyleDefault handler:nil];
+    [alert addAction:ok];
+
+    UIWindow *window = nil;
+    if (@available(iOS 13.0, *)) {
+        for (UIWindowScene *scene in [UIApplication sharedApplication].connectedScenes) {
+            if (scene.activationState == UISceneActivationStateForegroundActive) {
+                window = scene.windows.firstObject;
+                break;
+            }
+        }
+    } else {
+        window = [UIApplication sharedApplication].keyWindow;
+    }
+    if (window) {
+        [window.rootViewController presentViewController:alert animated:YES completion:nil];
+    }
+}
+
+@end
+
+#pragma mark - SandboxViewController
+
+@interface SandboxViewController : UIViewController
+@end
 
 @implementation SandboxViewController
 
@@ -39,60 +100,28 @@
     [self.view addSubview:closeButton];
 }
 
-- (void)openFilePicker {
-    // إصلاح مشكلة UTType
-    self.picker = [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:@[[UTType item]]];
-    self.picker.delegate = self;
-    self.picker.allowsMultipleSelection = NO;
-
-    UIWindow *window = [UIApplication sharedApplication].connectedScenes.allObjects.firstObject.windows.firstObject;
-    UIViewController *rootVC = window.rootViewController;
-    [rootVC presentViewController:self.picker animated:YES completion:nil];
+// زر فتح الملف
+- (void)openDocumentPicker {
+    SandboxTool *tool = [SandboxTool new];
+    [tool openFilePicker];
 }
 
-// عند اختيار ملف
-- (void)documentPicker:(UIDocumentPickerViewController *)controller didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
-    NSURL *fileURL = urls.firstObject;
-    if (!fileURL) return;
-
-    NSString *filePath = [fileURL path];
-    NSLog(@"[SandboxTool] File selected: %@", filePath);
-
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"📂 تم اختيار ملف"
-                                                                   message:filePath
-                                                            preferredStyle:UIAlertControllerStyleAlert];
-    UIAlertAction *ok = [UIAlertAction actionWithTitle:@"موافق" style:UIAlertActionStyleDefault handler:nil];
-    [alert addAction:ok];
-
-    UIWindow *window = [UIApplication sharedApplication].connectedScenes.allObjects.firstObject.windows.firstObject;
-    [window.rootViewController presentViewController:alert animated:YES completion:nil];
+// زر إغلاق الواجهة
+- (void)closeSelf {
+    [self dismissViewControllerAnimated:YES completion:nil];
 }
 
 @end
 
+#pragma mark - Hooks
+
+// Hook عند تشغيل التطبيق لفتح Sandbox Tool بعد ثانيتين
 %hook UIApplication
 - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions {
     BOOL result = %orig;
 
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        SandboxTool *tool = [SandboxTool new];
-        [tool openFilePicker];
-    });
-
-    return result;
-}
-%end
-
-// ✅ الدالة التي تُظهر الواجهة داخل التطبيق المستهدف
-%hook UIApplication
-
-- (void)applicationDidBecomeActive:(UIApplication *)application {
-    %orig;
-
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
         UIWindow *window = nil;
-
         if (@available(iOS 13.0, *)) {
             for (UIWindowScene *scene in [UIApplication sharedApplication].connectedScenes) {
                 if (scene.activationState == UISceneActivationStateForegroundActive) {
@@ -103,17 +132,14 @@
         } else {
             window = [UIApplication sharedApplication].keyWindow;
         }
-
         if (!window) return;
 
         SandboxViewController *vc = [SandboxViewController new];
         vc.modalPresentationStyle = UIModalPresentationOverFullScreen;
         vc.modalTransitionStyle = UIModalTransitionStyleCrossDissolve;
-
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-            [window.rootViewController presentViewController:vc animated:YES completion:nil];
-        });
+        [window.rootViewController presentViewController:vc animated:YES completion:nil];
     });
-}
 
+    return result;
+}
 %end
