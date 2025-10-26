@@ -1,4 +1,4 @@
-name: Build Theos Tweak (with Cache)
+name: Build Theos Tweak
 
 on:
   push:
@@ -6,67 +6,64 @@ on:
       - main
       - master
   pull_request:
-    branches:
-      - main
-      - master
-  workflow_dispatch:
 
 jobs:
   build:
     runs-on: macos-latest
+
     env:
       THEOS: ${{ github.workspace }}/theos
 
     steps:
-      # 1️⃣ سحب الكود من المستودع
-      - name: Checkout repository
+      - name: 🔄 Checkout repository
         uses: actions/checkout@v4
 
-      # 2️⃣ تثبيت الأدوات المطلوبة
-      - name: Install dependencies
-        run: |
-          brew install dpkg ldid
-          sudo xcode-select --switch /Applications/Xcode.app
-
-      # 3️⃣ استعادة ذاكرة التخزين المؤقت لـ Theos و SDKs (إن وجدت)
-      - name: Restore Theos & SDKs cache
-        id: cache-theos
-        uses: actions/cache@v4
+      # 🧩 ذاكرة مؤقتة لتسريع عمليات البناء القادمة
+      - name: ⚙️ Cache Theos
+        uses: actions/cache@v3
         with:
-          path: |
-            ${{ github.workspace }}/theos
-            ${{ github.workspace }}/theos/sdks
-          key: theos-${{ runner.os }}-${{ hashFiles('**/Makefile') }}
-          restore-keys: |
-            theos-${{ runner.os }}-
+          path: ${{ github.workspace }}/theos
+          key: theos-cache-${{ runner.os }}
 
-      # 4️⃣ تنزيل Theos فقط إذا لم يكن موجودًا مسبقًا
-      - name: Clone Theos (if not cached)
-        if: steps.cache-theos.outputs.cache-hit != 'true'
+      # 🧰 تثبيت الأدوات المطلوبة
+      - name: 🛠️ Install dependencies
         run: |
-          git clone --recursive https://github.com/theos/theos.git $THEOS
-          mkdir -p $THEOS/vendor
-          git clone --recursive https://github.com/theos/sdks.git $THEOS/sdks
-          echo "Theos cloned successfully!"
+          brew install dpkg ldid make git perl
 
-      # 5️⃣ إعداد البيئة
-      - name: Set up environment
+      # 🧱 تثبيت Theos و SDKs مع تنظيف المجلدات السابقة
+      - name: 📦 Setup Theos
         run: |
           echo "export THEOS=$THEOS" >> $HOME/.bash_profile
-          export THEOS=$THEOS
-          echo "Environment configured successfully."
+          mkdir -p $THEOS
 
-      # 6️⃣ بناء الأداة
-      - name: Build tweak (package)
+          if [ ! -d "$THEOS/.git" ]; then
+            echo "🔽 Cloning Theos framework..."
+            git clone --recursive https://github.com/theos/theos.git $THEOS
+          else
+            echo "✅ Theos already exists, skipping clone."
+          fi
+
+          # تنظيف مجلد sdks إن وُجد من قبل
+          if [ -d "$THEOS/sdks" ]; then
+            echo "🧹 Removing existing SDKs directory..."
+            rm -rf "$THEOS/sdks"
+          fi
+
+          echo "🔽 Cloning iOS SDKs..."
+          git clone --recursive https://github.com/theos/sdks.git $THEOS/sdks
+
+          echo "✅ Theos and SDKs ready."
+
+      # 🏗️ بناء الأداة (tweak)
+      - name: 🧩 Build Tweak
         run: |
-          make clean
-          make package
-        env:
-          THEOS: ${{ github.workspace }}/theos
+          echo "🏗️ Building tweak using Theos..."
+          make package FINALPACKAGE=1
+          echo "✅ Build completed successfully."
 
-      # 7️⃣ رفع الحزمة الناتجة كملف Artifact
-      - name: Upload .deb artifact
+      # 📦 حفظ ملف deb الناتج بعد البناء
+      - name: 📤 Upload deb package
         uses: actions/upload-artifact@v4
         with:
-          name: SandboxTool_Package
+          name: TikTokPro.deb
           path: packages/*.deb
