@@ -31,12 +31,11 @@ jobs:
           brew install dpkg ldid make git perl
 
       # 🧱 إعداد Theos فقط إذا لم يكن موجودًا مسبقًا
-      - name: 📦 Setup Theos
+      - name: 📦 Setup Theos (once)
         run: |
-          echo "export THEOS=$THEOS" >> $HOME/.bash_profile
           mkdir -p $THEOS
+          echo "export THEOS=$THEOS" >> $HOME/.bash_profile
 
-          # التحقق من وجود Theos
           if [ ! -d "$THEOS/.git" ]; then
             echo "🔽 Cloning Theos framework..."
             git clone --recursive https://github.com/theos/theos.git $THEOS
@@ -44,24 +43,23 @@ jobs:
             echo "✅ Theos already exists, skipping clone."
           fi
 
-          # التحقق من وجود SDKs
           if [ ! -d "$THEOS/sdks" ]; then
             echo "🔽 Cloning iOS SDKs..."
             git clone --recursive https://github.com/theos/sdks.git $THEOS/sdks
           else
-            echo "✅ SDKs already exist, skipping clone."
+            echo "✅ iOS SDKs already exist, skipping clone."
           fi
 
-          echo "✅ Theos and SDKs are ready."
+          echo "✅ Theos and SDKs ready."
 
-      # 🏗️ بناء الأداة (tweak)
+      # 🏗️ بناء التويك
       - name: 🧩 Build Tweak
         run: |
           echo "🏗️ Building tweak using Theos..."
           make package FINALPACKAGE=1
           echo "✅ Build completed successfully."
 
-      # 📦 حفظ ملف deb الناتج بعد البناء
+      # 📦 رفع ملف deb الناتج
       - name: 📤 Upload deb package
         uses: actions/upload-artifact@v4
         with:
