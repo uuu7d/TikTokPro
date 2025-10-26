@@ -1,8 +1,11 @@
 #import <UIKit/UIKit.h>
-#import <UniformTypeIdentifiers/UniformTypeIdentifiers.h> // متوفر من iOS 14
+#import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
-@interface SandboxViewController : UIViewController <UIDocumentPickerDelegate>
+@interface SandboxTool : NSObject <UIDocumentPickerDelegate>
+@property (nonatomic, strong) UIDocumentPickerViewController *picker;
 @end
+
+@implementation SandboxTool
 
 @implementation SandboxViewController
 
@@ -36,45 +39,49 @@
     [self.view addSubview:closeButton];
 }
 
-- (void)openDocumentPicker {
-    UIDocumentPickerViewController *picker = nil;
+- (void)openFilePicker {
+    // إصلاح مشكلة UTType
+    self.picker = [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:@[[UTType item]]];
+    self.picker.delegate = self;
+    self.picker.allowsMultipleSelection = NO;
 
-    // ✅ متوافق مع كل الإصدارات
-    if (@available(iOS 14.0, *)) {
-        picker = [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:@[[UTType data]]];
-    } else {
-        picker = [[UIDocumentPickerViewController alloc] initWithDocumentTypes:@[@"public.data"]
-                                                                       inMode:UIDocumentPickerModeImport];
-    }
-
-    picker.delegate = self;
-    picker.modalPresentationStyle = UIModalPresentationFormSheet;
-    [self presentViewController:picker animated:YES completion:nil];
+    UIWindow *window = [UIApplication sharedApplication].connectedScenes.allObjects.firstObject.windows.firstObject;
+    UIViewController *rootVC = window.rootViewController;
+    [rootVC presentViewController:self.picker animated:YES completion:nil];
 }
 
-// ✅ يتم استدعاؤها بعد اختيار الملف
+// عند اختيار ملف
 - (void)documentPicker:(UIDocumentPickerViewController *)controller didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
-    NSURL *selectedFile = [urls firstObject];
-    if (!selectedFile) return;
+    NSURL *fileURL = urls.firstObject;
+    if (!fileURL) return;
 
-    NSString *filePath = [selectedFile path];
-    NSString *message = [NSString stringWithFormat:@"تم اختيار الملف:\n%@", filePath];
+    NSString *filePath = [fileURL path];
+    NSLog(@"[SandboxTool] File selected: %@", filePath);
 
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"تم بنجاح ✅"
-                                                                   message:message
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"📂 تم اختيار ملف"
+                                                                   message:filePath
                                                             preferredStyle:UIAlertControllerStyleAlert];
-
     UIAlertAction *ok = [UIAlertAction actionWithTitle:@"موافق" style:UIAlertActionStyleDefault handler:nil];
     [alert addAction:ok];
 
-    [self presentViewController:alert animated:YES completion:nil];
-}
-
-- (void)closeSelf {
-    [self dismissViewControllerAnimated:YES completion:nil];
+    UIWindow *window = [UIApplication sharedApplication].connectedScenes.allObjects.firstObject.windows.firstObject;
+    [window.rootViewController presentViewController:alert animated:YES completion:nil];
 }
 
 @end
+
+%hook UIApplication
+- (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions {
+    BOOL result = %orig;
+
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        SandboxTool *tool = [SandboxTool new];
+        [tool openFilePicker];
+    });
+
+    return result;
+}
+%end
 
 // ✅ الدالة التي تُظهر الواجهة داخل التطبيق المستهدف
 %hook UIApplication
