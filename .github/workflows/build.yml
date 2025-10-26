@@ -30,17 +30,29 @@ jobs:
         run: |
           brew install dpkg ldid make git perl
 
-      # 🧱 تثبيت Theos و SDKs مع تنظيف المجلدات السابقة
-      - name: 📦 Setup Theos
-        run: |
-          echo "export THEOS=$THEOS" >> $HOME/.bash_profile
-          mkdir -p $THEOS
+# 🧱 تثبيت Theos و SDKs مع التحقق أولاً
+- name: 📦 Setup Theos
+  run: |
+    echo "export THEOS=$THEOS" >> $HOME/.bash_profile
+    mkdir -p $THEOS
 
-          if [ ! -d "$THEOS/.git" ]; then
-            echo "🔽 Cloning Theos framework..."
-            git clone --recursive https://github.com/theos/theos.git $THEOS
-          else
-            echo "✅ Theos already exists, skipping clone."
+    # تحقق من وجود Theos مسبقًا
+    if [ ! -d "$THEOS/.git" ]; then
+      echo "🔽 Cloning Theos framework..."
+      git clone --recursive https://github.com/theos/theos.git $THEOS
+    else
+      echo "✅ Theos already exists, skipping clone."
+    fi
+
+    # تحقق من وجود SDKs مسبقًا
+    if [ ! -d "$THEOS/sdks" ]; then
+      echo "🔽 Cloning iOS SDKs..."
+      git clone --recursive https://github.com/theos/sdks.git $THEOS/sdks
+    else
+      echo "✅ SDKs already exist, skipping clone."
+    fi
+
+    echo "✅ Theos and SDKs ready."
           fi
 
           # تنظيف مجلد sdks إن وُجد من قبل
