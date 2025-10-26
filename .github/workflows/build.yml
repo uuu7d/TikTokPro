@@ -1,49 +1,50 @@
-name: Build TikTokPro Tweak
+name: Build Theos Tweak
 
 on:
   push:
-    branches: [ main ]
+    branches:
+      - main
+      - master
+  pull_request:
+    branches:
+      - main
+      - master
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: macos-latest
-    
     env:
       THEOS: ${{ github.workspace }}/theos
 
     steps:
-      # الخطوة 1: سحب الكود مع المشاريع الفرعية (Theos)
-      - name: Checkout Source Code with Submodules
+      - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          submodules: 'recursive'
 
-      # الخطوة 2: تثبيت الأدوات المطلوبة
-      - name: Install Dependencies
+      - name: Install dependencies
         run: |
-          brew install ldid xz
+          brew install dpkg ldid
+          sudo xcode-select --switch /Applications/Xcode.app
 
-      # الخطوة 3: تثبيت حزمة SDK
-      - name: Install SDK
+      - name: Clone Theos
         run: |
-          curl -LO https://github.com/theos/sdks/releases/download/master-146e41f/iPhoneOS16.5.sdk.tar.xz
-          tar -xf iPhoneOS16.5.sdk.tar.xz -C $THEOS/sdks/
+          git clone --recursive https://github.com/theos/theos.git $THEOS
+          echo "THEOS path: $THEOS"
 
-      # الخطوة 4: بناء وتغليف الأداة
-      - name: Build Tweak
+      - name: Set up environment
         run: |
-          cd TikTokPro
-          make clean package
+          echo "export THEOS=$THEOS" >> $HOME/.bash_profile
+          export THEOS=$THEOS
+          mkdir -p $THEOS/vendor
+          git clone --recursive https://github.com/theos/sdks.git $THEOS/sdks
 
-      # الخطوة 5: (جديد) حفظ ملف .deb الناتج كـ Artifact
-      # هذا سيسمح لك بتحميل الملف مباشرة بعد انتهاء عملية البناء
-      - name: Upload .deb as Artifact
+      - name: Build tweak (package)
+        run: |
+          make clean
+          make package
+
+      - name: Upload .deb artifact
         uses: actions/upload-artifact@v4
         with:
-          name: tiktokpro-deb
-          path: TikTokPro/packages/*.deb
-
-# --- تم حذف الخطوات التالية ---
-# - name: Create GitHub Release
-# - name: Upload Tweak .deb to Release
+          name: SandboxTool_Package
+          path: packages/*.deb
