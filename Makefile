@@ -1,13 +1,18 @@
-ARCHS = arm64 arm64e
-TARGET = iphone:clang:latest:16.0
+# تحديد الحد الأدنى لإصدار iOS
+THEOS_DEVICE_IPHONEOS_DEPLOYMENT_TARGET = 16.0
 
-include $(THEOS)/makefiles/common.mk
+# المعماريات المستهدفة
+ARCHS = arm64
 
+# اسم التويك
 TWEAK_NAME = SandboxTool
 
+# ملفات التويك
 SandboxTool_FILES = Tweak.xm
-SandboxTool_FRAMEWORKS = UIKit
-SandboxTool_PRIVATE_FRAMEWORKS = AppSupport
-SandboxTool_CFLAGS = -fobjc-arc
 
+# الـ Frameworks المطلوبة
+SandboxTool_FRAMEWORKS = UIKit Foundation AppSupport AVFoundation Photos
+
+# تضمين Makefiles الخاصة بـ Theos
+include $(THEOS)/makefiles/common.mk
 include $(THEOS_MAKE_PATH)/tweak.mk
