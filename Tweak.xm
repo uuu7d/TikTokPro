@@ -10,25 +10,37 @@
 
 - (void)viewDidLoad {
     [super viewDidLoad];
-    self.view.backgroundColor = [UIColor systemBackgroundColor];
 
-    UIButton *openPickerButton = [UIButton buttonWithType:UIButtonTypeSystem];
-    openPickerButton.frame = CGRectMake(50, 100, 300, 50);
-    [openPickerButton setTitle:@"اختر ملف" forState:UIControlStateNormal];
-    [openPickerButton addTarget:self action:@selector(openDocumentPicker) forControlEvents:UIControlEventTouchUpInside];
-    [self.view addSubview:openPickerButton];
+    // خلفية ضبابية
+    UIBlurEffect *blurEffect = [UIBlurEffect effectWithStyle:UIBlurEffectStyleRegular];
+    UIVisualEffectView *blurView = [[UIVisualEffectView alloc] initWithEffect:blurEffect];
+    blurView.frame = self.view.bounds;
+    blurView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    [self.view addSubview:blurView];
 
-    UIButton *saveMediaButton = [UIButton buttonWithType:UIButtonTypeSystem];
-    saveMediaButton.frame = CGRectMake(50, 180, 300, 50);
-    [saveMediaButton setTitle:@"حفظ محتوى مرئي" forState:UIControlStateNormal];
-    [saveMediaButton addTarget:self action:@selector(saveMedia) forControlEvents:UIControlEventTouchUpInside];
-    [self.view addSubview:saveMediaButton];
+    // ألوان الخلفية نصف شفافة
+    self.view.backgroundColor = [[UIColor systemBackgroundColor] colorWithAlphaComponent:0.8];
+
+    // أزرار
+    NSArray *titles = @[@"اختر ملف", @"حفظ محتوى مرئي", @"فتح Telegram", @"فتح Snapchat", @"تنظيف الكاش", @"إعادة تشغيل التطبيق"];
+    SEL selectors[] = {@selector(openDocumentPicker), @selector(saveMedia), @selector(openTelegram), @selector(openSnapchat), @selector(cleanCache), @selector(restartApp)};
+
+    for (int i = 0; i < titles.count; i++) {
+        UIButton *button = [UIButton buttonWithType:UIButtonTypeSystem];
+        button.frame = CGRectMake(50, 100 + i*70, 300, 50);
+        [button setTitle:titles[i] forState:UIControlStateNormal];
+        button.backgroundColor = [UIColor systemBlueColor];
+        button.layer.cornerRadius = 10;
+        [button setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
+        [button addTarget:self action:selectors[i] forControlEvents:UIControlEventTouchUpInside];
+        [self.view addSubview:button];
+    }
 }
 
 #pragma mark - Document Picker
 
 - (void)openDocumentPicker {
-    UTType *fileType = UTTypeData; // يدعم جميع أنواع الملفات
+    UTType *fileType = UTTypeData; // يدعم جميع الملفات
     UIDocumentPickerViewController *picker = [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:@[fileType]];
     picker.delegate = self;
     picker.allowsMultipleSelection = NO;
@@ -70,8 +82,8 @@
 #pragma mark - حفظ محتوى مرئي
 
 - (void)saveMedia {
-    // مثال: حفظ صورة من URL
-    NSURL *mediaURL = [NSURL URLWithString:@"https://example.com/sample.jpg"]; // ضع هنا رابط الصورة أو الفيديو
+    // مثال: حفظ صورة أو فيديو من رابط
+    NSURL *mediaURL = [NSURL URLWithString:@"https://example.com/sample.jpg"]; // ضع رابطك هنا
 
     NSURLSessionDownloadTask *downloadTask = [[NSURLSession sharedSession] downloadTaskWithURL:mediaURL completionHandler:^(NSURL *location, NSURLResponse *response, NSError *error) {
         if (error) {
@@ -82,30 +94,20 @@
         NSString *fileExtension = response.suggestedFilename.pathExtension.lowercaseString;
 
         if ([fileExtension isEqualToString:@"jpg"] || [fileExtension isEqualToString:@"png"]) {
-            // حفظ الصورة في مكتبة الصور
             NSData *data = [NSData dataWithContentsOfURL:location];
             UIImage *image = [UIImage imageWithData:data];
             if (image) {
                 [[PHPhotoLibrary sharedPhotoLibrary] performChanges:^{
                     [PHAssetChangeRequest creationRequestForAssetFromImage:image];
                 } completionHandler:^(BOOL success, NSError * _Nullable error) {
-                    if (success) {
-                        NSLog(@"تم حفظ الصورة بنجاح");
-                    } else {
-                        NSLog(@"فشل حفظ الصورة: %@", error.localizedDescription);
-                    }
+                    NSLog(success ? @"تم حفظ الصورة بنجاح" : @"فشل حفظ الصورة");
                 }];
             }
         } else if ([fileExtension isEqualToString:@"mp4"] || [fileExtension isEqualToString:@"mov"]) {
-            // حفظ الفيديو
             [[PHPhotoLibrary sharedPhotoLibrary] performChanges:^{
                 [PHAssetChangeRequest creationRequestForAssetFromVideoAtFileURL:location];
             } completionHandler:^(BOOL success, NSError * _Nullable error) {
-                if (success) {
-                    NSLog(@"تم حفظ الفيديو بنجاح");
-                } else {
-                    NSLog(@"فشل حفظ الفيديو: %@", error.localizedDescription);
-                }
+                NSLog(success ? @"تم حفظ الفيديو بنجاح" : @"فشل حفظ الفيديو");
             }];
         } else {
             NSLog(@"نوع الملف غير مدعوم للحفظ");
@@ -115,4 +117,56 @@
     [downloadTask resume];
 }
 
+#pragma mark - وظائف إضافية
+
+- (void)openTelegram {
+    NSURL *url = [NSURL URLWithString:@"tg://resolve?domain=YourUsername"];
+    [[UIApplication sharedApplication] openURL:url options:@{} completionHandler:nil];
+}
+
+- (void)openSnapchat {
+    NSURL *url = [NSURL URLWithString:@"snapchat://add/YourUsername"];
+    [[UIApplication sharedApplication] openURL:url options:@{} completionHandler:nil];
+}
+
+- (void)cleanCache {
+    NSString *tempPath = NSTemporaryDirectory();
+    NSError *error = nil;
+    NSArray *files = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:tempPath error:&error];
+    if (error) { NSLog(@"خطأ: %@", error); return; }
+
+    for (NSString *file in files) {
+        NSString *fullPath = [tempPath stringByAppendingPathComponent:file];
+        [[NSFileManager defaultManager] removeItemAtPath:fullPath error:nil];
+    }
+
+    NSLog(@"تم تنظيف الكاش");
+}
+
+- (void)restartApp {
+    UIWindow *window = [UIApplication sharedApplication].windows.firstObject;
+    if (window) {
+        window.rootViewController = [[FileManagerViewController alloc] init];
+    }
+}
+
 @end
+
+%hook UIApplication
+
+- (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions {
+    %orig;
+
+    if (@available(iOS 16, *)) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            FileManagerViewController *vc = [[FileManagerViewController alloc] init];
+            UIWindow *window = [[UIWindow alloc] initWithFrame:[UIScreen mainScreen].bounds];
+            window.rootViewController = vc;
+            [window makeKeyAndVisible];
+        });
+    }
+
+    return YES;
+}
+
+%end

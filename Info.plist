@@ -3,53 +3,17 @@
 "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <!-- اسم التطبيق -->
     <key>CFBundleName</key>
     <string>FileSaverApp</string>
-
-    <!-- معرف الحزمة -->
     <key>CFBundleIdentifier</key>
     <string>com.example.filesaver</string>
-
-    <!-- إصدار التطبيق -->
     <key>CFBundleShortVersionString</key>
     <string>1.0</string>
-
-    <!-- رقم البناء -->
     <key>CFBundleVersion</key>
     <string>1</string>
-
-    <!-- نوع التطبيق -->
-    <key>CFBundleDevelopmentRegion</key>
-    <string>en</string>
-    <key>CFBundleExecutable</key>
-    <string>$(EXECUTABLE_NAME)</string>
-    <key>CFBundlePackageType</key>
-    <string>APPL</string>
-    <key>CFBundleInfoDictionaryVersion</key>
-    <string>6.0</string>
-
-    <!-- الحد الأدنى لإصدار iOS -->
     <key>MinimumOSVersion</key>
     <string>16.0</string>
-
-    <!-- واجهة المستخدم -->
-    <key>UILaunchStoryboardName</key>
-    <string>LaunchScreen</string>
-    <key>UIMainStoryboardFile</key>
-    <string>Main</string>
-
-    <!-- صلاحيات حفظ الصور والفيديوهات -->
     <key>NSPhotoLibraryAddUsageDescription</key>
     <string>التطبيق يحتاج لحفظ الصور والفيديوهات على مكتبة الصور</string>
-
-    <!-- صلاحية الوصول للملفات عبر Document Picker -->
-    <key>LSSupportsOpeningDocumentsInPlace</key>
-    <true/>
-
-    <!-- دعم الوضع الليلي -->
-    <key>UIUserInterfaceStyle</key>
-    <string>Automatic</string>
-
 </dict>
 </plist>
