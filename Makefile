@@ -2,7 +2,7 @@
 THEOS_DEVICE_IPHONEOS_DEPLOYMENT_TARGET = 16.0
 
 # المعماريات المستهدفة
-ARCHS = arm64
+ARCHS = arm64 arm64e
 
 # اسم التويك
 TWEAK_NAME = SandboxTool
