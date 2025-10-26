@@ -28,6 +28,8 @@ jobs:
 
       - name: Clone Theos
         run: |
+          # حذف أي نسخة سابقة إن وجدت
+          rm -rf $THEOS
           git clone --recursive https://github.com/theos/theos.git $THEOS
           echo "THEOS path: $THEOS"
 
@@ -35,6 +37,10 @@ jobs:
         run: |
           echo "export THEOS=$THEOS" >> $HOME/.bash_profile
           export THEOS=$THEOS
+
+          # حذف مجلد sdks إن كان موجودًا لتجنب الخطأ
+          rm -rf $THEOS/sdks
+
           mkdir -p $THEOS/vendor
           git clone --recursive https://github.com/theos/sdks.git $THEOS/sdks
 
