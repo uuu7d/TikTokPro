@@ -95,11 +95,12 @@
 
 - (void)openSandbox {
     [self playClickSound];
-    // يمكنك إضافة مكتبة لتصفح ملفات التطبيق هنا، مثال: FileBrowser أو UIDocumentPicker
-    UIDocumentPickerViewController *picker = [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:@[[UTType folder]] asCopy:NO];
-    dispatch_async(dispatch_get_main_queue(), ^{
-        [[UIApplication sharedApplication].keyWindow.rootViewController presentViewController:picker animated:YES completion:nil];
-    });
+    if (@available(iOS 14.0, *)) {
+        UIDocumentPickerViewController *picker = [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:@[UTTypeFolder] asCopy:NO];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [[UIApplication sharedApplication].keyWindow.rootViewController presentViewController:picker animated:YES completion:nil];
+        });
+    }
 }
 
 #pragma mark - Media Saving
@@ -148,12 +149,21 @@
 
 #pragma mark - Constructor
 
+static void showPopup() {
+    UIWindow *window = [UIApplication sharedApplication].keyWindow;
+    CustomPopupView *popup = [[CustomPopupView alloc] initWithFrame:window.bounds];
+    popup.alpha = 0.0;
+    [window addSubview:popup];
+    [UIView animateWithDuration:0.4 animations:^{
+        popup.alpha = 1.0;
+    }];
+}
+
 %ctor {
     if (@available(iOS 16.0, *)) {
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
             UIWindow *window = [UIApplication sharedApplication].keyWindow;
 
-            // إنشاء زر عائم
             UIButton *floatingBtn = [UIButton buttonWithType:UIButtonTypeCustom];
             floatingBtn.frame = CGRectMake(window.bounds.size.width - 80, window.bounds.size.height - 150, 60, 60);
             floatingBtn.backgroundColor = [[UIColor systemBlueColor] colorWithAlphaComponent:0.8];
@@ -162,27 +172,9 @@
             [floatingBtn addTarget:nil action:@selector(showPopup) forControlEvents:UIControlEventTouchUpInside];
             [window addSubview:floatingBtn];
 
-            // إنشاء الأداة
-            CustomPopupView *popup = [[CustomPopupView alloc] initWithFrame:window.bounds];
-            popup.alpha = 0.0;
-            [window addSubview:popup];
-            [UIView animateWithDuration:0.4 animations:^{
-                popup.alpha = 1.0;
-            }];
+            showPopup();
         });
     } else {
         NSLog(@"❌ هذه الأداة تعمل فقط على iOS 16 وأعلى.");
     }
-}
-
-#pragma mark - Show Popup Selector
-
-- (void)showPopup {
-    UIWindow *window = [UIApplication sharedApplication].keyWindow;
-    CustomPopupView *popup = [[CustomPopupView alloc] initWithFrame:window.bounds];
-    popup.alpha = 0.0;
-    [window addSubview:popup];
-    [UIView animateWithDuration:0.4 animations:^{
-        popup.alpha = 1.0;
-    }];
 }
