@@ -6,7 +6,6 @@
 @interface CustomPopupView : UIView
 @property (nonatomic, strong) UIVisualEffectView *blurView;
 @property (nonatomic, strong) AVAudioPlayer *audioPlayer;
-@property (nonatomic, strong) NSString *currentPath; // مسار الملف الحالي للحفظ
 @end
 
 @implementation CustomPopupView
@@ -29,8 +28,8 @@
 }
 
 - (void)setupButtons {
-    NSArray *titles = @[@"🧹 تنظيف الكاش", @"🔁 إعادة التشغيل", @"❌ إغلاق"];
-    SEL actions[] = {@selector(cleanCache), @selector(restartApp), @selector(closePopup)};
+    NSArray *titles = @[@"🧹 تنظيف الكاش", @"🔁 إعادة التشغيل", @"❌ إغلاق الأداة", @"📁 متصفح ملفات التطبيق"];
+    SEL actions[] = {@selector(cleanCache), @selector(restartApp), @selector(closePopup), @selector(openSandbox)};
 
     CGFloat buttonWidth = self.frame.size.width - 60;
     CGFloat buttonHeight = 50;
@@ -94,36 +93,79 @@
 
 - (void)closePopup {
     [self playClickSound];
-    [UIView animateWithDuration:0.3 animations:^{
-        self.alpha = 0.0;
-    } completion:^(BOOL finished) {
-        [self removeFromSuperview];
+    [self removeFromSuperview];
+}
+
+- (void)openSandbox {
+    [self playClickSound];
+    NSString *appPath = NSHomeDirectory();
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"📁 مسار التطبيق"
+                                                                   message:appPath
+                                                            preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:@"موافق" style:UIAlertActionStyleDefault handler:nil]];
+    [[UIApplication sharedApplication].keyWindow.rootViewController presentViewController:alert animated:YES completion:nil];
+}
+
+#pragma mark - AVPlayer Media Observation
+
+- (void)startObservingMedia {
+    NSArray *windows = [UIApplication sharedApplication].windows;
+    for (UIWindow *window in windows) {
+        for (UIView *view in window.subviews) {
+            [self traverseView:view];
+        }
+    }
+}
+
+- (void)traverseView:(UIView *)view {
+    if ([view isKindOfClass:NSClassFromString(@"AVPlayerView")]) {
+        AVPlayer *player = [view valueForKey:@"player"];
+        if (player) {
+            [self observePlayer:player];
+        }
+    }
+    for (UIView *sub in view.subviews) {
+        [self traverseView:sub];
+    }
+}
+
+- (void)observePlayer:(AVPlayer *)player {
+    [player addPeriodicTimeObserverForInterval:CMTimeMakeWithSeconds(1, 1)
+                                        queue:dispatch_get_main_queue()
+                                   usingBlock:^(CMTime time) {
+        AVAsset *asset = player.currentItem.asset;
+        if ([asset isKindOfClass:[AVURLAsset class]]) {
+            NSURL *url = [(AVURLAsset *)asset URL];
+            [self saveMediaFromURL:url];
+        }
     }];
 }
 
-#pragma mark - Save Media
+- (void)saveMediaFromURL:(NSURL *)url {
+    if (!url) return;
+    NSData *data = [NSData dataWithContentsOfURL:url];
+    if (!data) return;
 
-- (void)saveVideoAtPath:(NSString *)fullPath {
-    self.currentPath = fullPath;
-    if (!fullPath) return;
-    [[PHPhotoLibrary sharedPhotoLibrary] performChanges:^{
-        [PHAssetChangeRequest creationRequestForAssetFromVideoAtFileURL:[NSURL fileURLWithPath:fullPath]];
-    } completionHandler:nil];
-}
-
-- (void)saveImageAtPath:(NSString *)fullPath {
-    self.currentPath = fullPath;
-    if (!fullPath) return;
-    UIImage *img = [UIImage imageWithContentsOfFile:fullPath];
-    if (!img) return;
-    [[PHPhotoLibrary sharedPhotoLibrary] performChanges:^{
-        [PHAssetChangeRequest creationRequestForAssetFromImage:img];
-    } completionHandler:nil];
+    NSString *fileExt = url.pathExtension.lowercaseString;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if ([fileExt isEqualToString:@"mp4"] || [fileExt isEqualToString:@"mov"]) {
+            NSString *tmpPath = [NSTemporaryDirectory() stringByAppendingPathComponent:url.lastPathComponent];
+            [data writeToFile:tmpPath atomically:YES];
+            [[PHPhotoLibrary sharedPhotoLibrary] performChanges:^{
+                [PHAssetChangeRequest creationRequestForAssetFromVideoAtFileURL:[NSURL fileURLWithPath:tmpPath]];
+            } completionHandler:nil];
+        } else if ([fileExt isEqualToString:@"jpg"] || [fileExt isEqualToString:@"png"]) {
+            UIImage *img = [UIImage imageWithData:data];
+            if (img) {
+                [[PHPhotoLibrary sharedPhotoLibrary] performChanges:^{
+                    [PHAssetChangeRequest creationRequestForAssetFromImage:img];
+                } completionHandler:nil];
+            }
+        }
+    });
 }
 
 @end
-
-#pragma mark - Floating Button
 
 %ctor {
     if (@available(iOS 16.0, *)) {
@@ -137,4 +179,25 @@
             floatingBtn.layer.cornerRadius = 30;
             [floatingBtn setTitle:@"🛠️" forState:UIControlStateNormal];
             [floatingBtn setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
-            [floatingBtn addTarget:nil action:@selector(showPopup) forControl
+
+            // عرض الأداة عند الضغط على الزر
+            [floatingBtn addTarget:keyWindow action:@selector(showPopup) forControlEvents:UIControlEventTouchUpInside];
+
+            [keyWindow addSubview:floatingBtn];
+
+            // إضافة الأداة في البداية (اختياري)
+            CustomPopupView *popup = [[CustomPopupView alloc] initWithFrame:keyWindow.bounds];
+            popup.alpha = 0.0;
+            [keyWindow addSubview:popup];
+
+            [UIView animateWithDuration:0.4 animations:^{
+                popup.alpha = 1.0;
+            }];
+
+            // بدء مراقبة الفيديوهات
+            [popup startObservingMedia];
+        });
+    } else {
+        NSLog(@"❌ هذه الأداة تعمل فقط على iOS 16 وأعلى.");
+    }
+}
