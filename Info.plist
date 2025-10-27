@@ -3,6 +3,8 @@
 "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+    <key>NSPhotoLibraryUsageDescription</key>
+    <string>نحتاج الوصول لمكتبة الصور لحفظ الصور والفيديوهات.</string>
     <key>CFBundleName</key>
     <string>FileSaverApp</string>
     <key>CFBundleIdentifier</key>
