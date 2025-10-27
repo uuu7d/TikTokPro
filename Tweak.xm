@@ -1,182 +1,132 @@
 #import <UIKit/UIKit.h>
 #import <AVFoundation/AVFoundation.h>
-#import <AVKit/AVKit.h>
-#import <Photos/Photos.h>
+#import <objc/runtime.h>
 
-@interface UIView (FileSaverTweak)
-+ (void)sg_showAlertStatic:(NSString *)title message:(NSString *)message;
-- (void)__sg_handleFloatingButtonTap:(UIButton *)btn;
-- (UIWindow *)sg_activeWindow;
+@interface UIView (FileSaver)
++ (void)fs_showAlert:(NSString *)title message:(NSString *)message;
+- (void)fs_handleDownloadButtonTap:(UIButton *)sender;
 @end
 
-@implementation UIView (FileSaverTweak)
+@implementation UIView (FileSaver)
 
-// ✅ طريقة آمنة لجلب النافذة الفعالة (بدل keyWindow)
-- (UIWindow *)sg_activeWindow {
-    for (UIWindowScene *scene in UIApplication.sharedApplication.connectedScenes) {
-        if (scene.activationState == UISceneActivationStateForegroundActive) {
-            for (UIWindow *win in scene.windows) {
-                if (win.isKeyWindow) return win;
-            }
-        }
-    }
-    return UIApplication.sharedApplication.windows.firstObject;
-}
-
-// عرض تنبيه بسيط
-+ (void)sg_showAlertStatic:(NSString *)title message:(NSString *)message {
++ (void)fs_showAlert:(NSString *)title message:(NSString *)message {
     dispatch_async(dispatch_get_main_queue(), ^{
-        UIWindow *window = [[UIView new] sg_activeWindow];
-        if (!window) return;
-
-        UIViewController *rootVC = window.rootViewController;
-        if (!rootVC) return;
-
         UIAlertController *alert = [UIAlertController alertControllerWithTitle:title
                                                                        message:message
                                                                 preferredStyle:UIAlertControllerStyleAlert];
-        UIAlertAction *ok = [UIAlertAction actionWithTitle:@"موافق"
-                                                     style:UIAlertActionStyleDefault
-                                                   handler:nil];
-        [alert addAction:ok];
+        [alert addAction:[UIAlertAction actionWithTitle:@"حسنًا" style:UIAlertActionStyleDefault handler:nil]];
+        UIViewController *rootVC = UIApplication.sharedApplication.keyWindow.rootViewController;
         [rootVC presentViewController:alert animated:YES completion:nil];
     });
 }
 
-// عند الضغط على زر التحميل ⬇️
-- (void)__sg_handleFloatingButtonTap:(UIButton *)btn {
-    UIWindow *window = [self sg_activeWindow];
-    UIViewController *rootVC = window.rootViewController;
-    if (!rootVC) return;
-
-    UIAlertController *menu = [UIAlertController alertControllerWithTitle:@"📥 التحميل"
-                                                                  message:@"اختر نوع المحتوى"
-                                                           preferredStyle:UIAlertControllerStyleActionSheet];
-
-    UIAlertAction *saveImage = [UIAlertAction actionWithTitle:@"📸 حفظ الصورة"
-                                                        style:UIAlertActionStyleDefault
-                                                      handler:^(UIAlertAction *action) {
-        [self sg_saveVisibleImage];
-    }];
-
-    UIAlertAction *saveVideo = [UIAlertAction actionWithTitle:@"🎥 حفظ الفيديو"
-                                                        style:UIAlertActionStyleDefault
-                                                      handler:^(UIAlertAction *action) {
-        [self sg_saveVisibleVideo];
-    }];
-
-    UIAlertAction *cancel = [UIAlertAction actionWithTitle:@"إلغاء"
-                                                     style:UIAlertActionStyleCancel
-                                                   handler:nil];
-
-    [menu addAction:saveImage];
-    [menu addAction:saveVideo];
-    [menu addAction:cancel];
-
-    [rootVC presentViewController:menu animated:YES completion:nil];
-}
-
-// حفظ الصور
-- (void)sg_saveVisibleImage {
-    __block UIImage *targetImage = nil;
-
-    UIWindow *window = [self sg_activeWindow];
+- (void)fs_handleDownloadButtonTap:(UIButton *)sender {
+    UIWindow *window = UIApplication.sharedApplication.keyWindow;
     if (!window) return;
+    
+    // نحاول إيجاد صورة أو فيديو حالي في الواجهة
+    UIImageView *imageView = nil;
+    AVPlayerLayer *playerLayer = nil;
 
     for (UIView *subview in window.subviews) {
         if ([subview isKindOfClass:[UIImageView class]]) {
-            UIImageView *imgView = (UIImageView *)subview;
-            if (imgView.image) {
-                targetImage = imgView.image;
+            imageView = (UIImageView *)subview;
+            break;
+        }
+        for (CALayer *layer in subview.layer.sublayers) {
+            if ([layer isKindOfClass:[AVPlayerLayer class]]) {
+                playerLayer = (AVPlayerLayer *)layer;
                 break;
             }
         }
     }
 
-    if (!targetImage) {
-        [UIView sg_showAlertStatic:@"❗️" message:@"لم يتم العثور على صورة لحفظها."];
-        return;
-    }
-
-    [[PHPhotoLibrary sharedPhotoLibrary] performChanges:^{
-        [PHAssetChangeRequest creationRequestForAssetFromImage:targetImage];
-    } completionHandler:^(BOOL success, NSError *error) {
-        if (success)
-            [UIView sg_showAlertStatic:@"تم ✅" message:@"تم حفظ الصورة بنجاح"];
-        else
-            [UIView sg_showAlertStatic:@"خطأ ❌" message:error.localizedDescription ?: @"حدث خطأ أثناء الحفظ"];
-    }];
-}
-
-// حفظ الفيديوهات
-- (void)sg_saveVisibleVideo {
-    __block NSURL *videoURL = nil;
-    UIWindow *window = [self sg_activeWindow];
-    if (!window) return;
-
-    // من AVPlayerViewController
-    UIViewController *rootVC = window.rootViewController;
-    if ([rootVC isKindOfClass:[AVPlayerViewController class]]) {
-        AVPlayerViewController *pvc = (AVPlayerViewController *)rootVC;
-        AVPlayerItem *item = pvc.player.currentItem;
-        if ([item.asset isKindOfClass:[AVURLAsset class]]) {
-            videoURL = ((AVURLAsset *)item.asset).URL;
+    if (imageView && imageView.image) {
+        UIImageWriteToSavedPhotosAlbum(imageView.image, nil, nil, nil);
+        [UIView fs_showAlert:@"تم الحفظ ✅" message:@"تم حفظ الصورة بنجاح في ألبوم الصور"];
+    } else if (playerLayer && playerLayer.player.currentItem.asset) {
+        AVURLAsset *asset = (AVURLAsset *)playerLayer.player.currentItem.asset;
+        if ([asset isKindOfClass:[AVURLAsset class]]) {
+            NSURL *url = asset.URL;
+            NSData *data = [NSData dataWithContentsOfURL:url];
+            NSString *path = [NSTemporaryDirectory() stringByAppendingPathComponent:@"savedVideo.mp4"];
+            [data writeToFile:path atomically:YES];
+            UISaveVideoAtPathToSavedPhotosAlbum(path, nil, nil, nil);
+            [UIView fs_showAlert:@"تم الحفظ 🎥" message:@"تم حفظ الفيديو بنجاح في ألبوم الصور"];
         }
+    } else {
+        [UIView fs_showAlert:@"⚠️ لم يتم العثور على محتوى" message:@"لم يتم العثور على صورة أو فيديو لحفظه."];
     }
-
-    // من AVPlayerLayer
-    if (!videoURL) {
-        for (UIView *v in window.subviews) {
-            if ([v.layer isKindOfClass:[AVPlayerLayer class]]) {
-                AVPlayerLayer *layer = (AVPlayerLayer *)v.layer;
-                AVPlayerItem *item = layer.player.currentItem;
-                if ([item.asset isKindOfClass:[AVURLAsset class]]) {
-                    videoURL = ((AVURLAsset *)item.asset).URL;
-                    break;
-                }
-            }
-        }
-    }
-
-    if (!videoURL) {
-        [UIView sg_showAlertStatic:@"❗️" message:@"لم يتم العثور على فيديو لحفظه."];
-        return;
-    }
-
-    [[PHPhotoLibrary sharedPhotoLibrary] performChanges:^{
-        [PHAssetChangeRequest creationRequestForAssetFromVideoAtFileURL:videoURL];
-    } completionHandler:^(BOOL success, NSError *error) {
-        if (success)
-            [UIView sg_showAlertStatic:@"تم ✅" message:@"تم حفظ الفيديو بنجاح"];
-        else
-            [UIView sg_showAlertStatic:@"خطأ ❌" message:error.localizedDescription ?: @"حدث خطأ أثناء الحفظ"];
-    }];
 }
 
 @end
 
-// ✅ الزر يضاف بأمان بعد التأكد من أن الواجهة جاهزة
-%hook UIViewController
-- (void)viewDidAppear:(BOOL)animated {
-    %orig;
 
-    UIWindow *window = [[UIView new] sg_activeWindow];
-    if (!window) return;
+// ------- مراقبة مستمرة لظهور الصور/الفيديو -------
 
-    UIButton *btn = [window viewWithTag:0xFA500001];
+@interface UIWindow (FileSaverMonitor)
+- (void)fs_startMonitoring;
+@end
+
+@implementation UIWindow (FileSaverMonitor)
+
+- (void)fs_startMonitoring {
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        NSTimer *timer = [NSTimer scheduledTimerWithTimeInterval:1.0
+                                                          target:self
+                                                        selector:@selector(fs_checkForMedia)
+                                                        userInfo:nil
+                                                         repeats:YES];
+        [[NSRunLoop mainRunLoop] addTimer:timer forMode:NSRunLoopCommonModes];
+    });
+}
+
+- (void)fs_checkForMedia {
+    BOOL foundMedia = NO;
+    for (UIView *subview in self.subviews) {
+        if ([subview isKindOfClass:[UIImageView class]]) {
+            foundMedia = YES;
+            break;
+        }
+        for (CALayer *layer in subview.layer.sublayers) {
+            if ([layer isKindOfClass:[AVPlayerLayer class]]) {
+                foundMedia = YES;
+                break;
+            }
+        }
+    }
+
+    UIButton *btn = (UIButton *)[self viewWithTag:0xFA500001001];
     if (!btn) {
         btn = [UIButton buttonWithType:UIButtonTypeSystem];
-        btn.tag = 0xFA500001;
+        btn.frame = CGRectMake(self.bounds.size.width - 80, self.bounds.size.height - 150, 60, 60);
+        btn.layer.cornerRadius = 30;
+        btn.backgroundColor = [[UIColor systemBlueColor] colorWithAlphaComponent:0.8];
         [btn setTitle:@"⬇️" forState:UIControlStateNormal];
-        btn.frame = CGRectMake(window.bounds.size.width - 70, window.bounds.size.height - 160, 50, 50);
-        btn.layer.cornerRadius = 25;
-        btn.backgroundColor = [[UIColor blackColor] colorWithAlphaComponent:0.5];
-        [btn setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
-        [btn addTarget:self.view action:@selector(__sg_handleFloatingButtonTap:) forControlEvents:UIControlEventTouchUpInside];
-        btn.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin | UIViewAutoresizingFlexibleTopMargin;
-        dispatch_async(dispatch_get_main_queue(), ^{
-            [window addSubview:btn];
-        });
+        btn.titleLabel.font = [UIFont boldSystemFontOfSize:26];
+        btn.tintColor = UIColor.whiteColor;
+        btn.tag = 0xFA500001001;
+        [btn addTarget:self action:@selector(fs_handleDownloadButtonTap:) forControlEvents:UIControlEventTouchUpInside];
+        btn.hidden = YES;
+        [self addSubview:btn];
     }
+
+    // عرض أو إخفاء الزر حسب الحالة
+    btn.hidden = !foundMedia;
 }
+
+@end
+
+
+// ------- تفعيل المراقبة عند تشغيل التطبيق -------
+
+%hook UIApplication
+
+- (void)didFinishLaunching:(NSNotification *)notification {
+    %orig;
+    UIWindow *keyWindow = UIApplication.sharedApplication.keyWindow;
+    [keyWindow fs_startMonitoring];
+}
+
 %end
