@@ -94,7 +94,7 @@
                                                                        message:msg
                                                                 preferredStyle:UIAlertControllerStyleAlert];
         [alert addAction:[UIAlertAction actionWithTitle:@"موافق" style:UIAlertActionStyleDefault handler:nil]];
-        [[UIApplication sharedApplication].keyWindow.rootViewController presentViewController:alert animated:YES completion:nil];
+        [UIWindow *window = nil; if (@available(iOS 13.0, *)) {     for (UIWindowScene* scene in [UIApplication sharedApplication].connectedScenes) {         if (scene.activationState == UISceneActivationStateForegroundActive) {             window = scene.windows.firstObject;             break;         }     } } else {     window = [UIApplication sharedApplication].keyWindow; } UIViewController *rootVC = window.rootViewController; presentViewController:alert animated:YES completion:nil];
     });
 }
 
@@ -148,7 +148,7 @@
     [alert addAction:[UIAlertAction actionWithTitle:@"إلغاء" style:UIAlertActionStyleCancel handler:nil]];
 
     dispatch_async(dispatch_get_main_queue(), ^{
-        [[UIApplication sharedApplication].keyWindow.rootViewController presentViewController:alert animated:YES completion:nil];
+        [UIWindow *window = nil; if (@available(iOS 13.0, *)) {     for (UIWindowScene* scene in [UIApplication sharedApplication].connectedScenes) {         if (scene.activationState == UISceneActivationStateForegroundActive) {             window = scene.windows.firstObject;             break;         }     } } else {     window = [UIApplication sharedApplication].keyWindow; } UIViewController *rootVC = window.rootViewController; presentViewController:alert animated:YES completion:nil];
     });
 }
 
