@@ -43,8 +43,8 @@ jobs:
           if [ ! -d "$THEOS/sdks/iPhoneOS16.0.sdk" ]; then
             echo "🔽 Downloading iOS 16.0 SDK..."
             mkdir -p $THEOS/sdks
-            curl -L -o $THEOS/sdks/iPhoneOS16.0.sdk.tar.xz https://github.com/theos/sdks/releases/download/16.0/iPhoneOS16.0.sdk.tar.xz
-            tar -xJf $THEOS/sdks/iPhoneOS16.0.sdk.tar.xz -C $THEOS/sdks
+            curl -L -o $THEOS/sdks/iPhoneOS17.0.sdk.tar.xz https://github.com/theos/sdks/releases/download/17.0/iPhoneOS17.0.sdk.tar.xz
+         tar -xJf $THEOS/sdks/iPhoneOS17.0.sdk.tar.xz -C $THEOS/sdks
           else
             echo "✅ iOS 16.0 SDK already exists."
           fi
