@@ -1,132 +1,125 @@
+// Tweak.xm
 #import <UIKit/UIKit.h>
 #import <AVFoundation/AVFoundation.h>
 #import <objc/runtime.h>
 
-@interface UIView (FileSaver)
-+ (void)fs_showAlert:(NSString *)title message:(NSString *)message;
-- (void)fs_handleDownloadButtonTap:(UIButton *)sender;
-@end
+#pragma mark - helper: print view tree
 
-@implementation UIView (FileSaver)
+static void printViewTreeRecursive(UIView *view, int depth) {
+    if (!view) return;
+    NSMutableString *pad = [NSMutableString string];
+    for (int i=0;i<depth;i++) [pad appendString:@"  "];
+    NSLog(@"[ViewTree] %@- %@ frame=%@", pad, NSStringFromClass([view class]), NSStringFromCGRect(view.frame));
+    for (UIView *sub in view.subviews) {
+        printViewTreeRecursive(sub, depth + 1);
+    }
+}
 
-+ (void)fs_showAlert:(NSString *)title message:(NSString *)message {
+static void printCurrentWindowViewTree(void) {
     dispatch_async(dispatch_get_main_queue(), ^{
-        UIAlertController *alert = [UIAlertController alertControllerWithTitle:title
-                                                                       message:message
-                                                                preferredStyle:UIAlertControllerStyleAlert];
-        [alert addAction:[UIAlertAction actionWithTitle:@"حسنًا" style:UIAlertActionStyleDefault handler:nil]];
-        UIViewController *rootVC = UIApplication.sharedApplication.keyWindow.rootViewController;
-        [rootVC presentViewController:alert animated:YES completion:nil];
+        @try {
+            // أفضل طريقة لجلب النافذة النشطة (iOS 13+ يدعم Scenes)
+            UIWindow *activeWindow = nil;
+            for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
+                if (![scene isKindOfClass:[UIWindowScene class]]) continue;
+                UIWindowScene *wscene = (UIWindowScene *)scene;
+                if (wscene.activationState != UISceneActivationStateForegroundActive) continue;
+                for (UIWindow *w in wscene.windows) {
+                    if (w.isKeyWindow) { activeWindow = w; break; }
+                }
+                if (activeWindow) break;
+            }
+            if (!activeWindow) activeWindow = UIApplication.sharedApplication.keyWindow ?: UIApplication.sharedApplication.windows.firstObject;
+            if (!activeWindow) {
+                NSLog(@"[ViewTree] No active window found.");
+                return;
+            }
+            NSLog(@"[ViewTree] === START view tree for window: %@ ===", activeWindow);
+            printViewTreeRecursive(activeWindow, 0);
+            NSLog(@"[ViewTree] === END view tree ===");
+        } @catch (NSException *e) {
+            NSLog(@"[ViewTree] Exception while printing view tree: %@", e.reason);
+        }
     });
 }
 
-- (void)fs_handleDownloadButtonTap:(UIButton *)sender {
-    UIWindow *window = UIApplication.sharedApplication.keyWindow;
-    if (!window) return;
-    
-    // نحاول إيجاد صورة أو فيديو حالي في الواجهة
-    UIImageView *imageView = nil;
-    AVPlayerLayer *playerLayer = nil;
+#pragma mark - Hooks
 
-    for (UIView *subview in window.subviews) {
-        if ([subview isKindOfClass:[UIImageView class]]) {
-            imageView = (UIImageView *)subview;
-            break;
-        }
-        for (CALayer *layer in subview.layer.sublayers) {
-            if ([layer isKindOfClass:[AVPlayerLayer class]]) {
-                playerLayer = (AVPlayerLayer *)layer;
-                break;
-            }
-        }
-    }
-
-    if (imageView && imageView.image) {
-        UIImageWriteToSavedPhotosAlbum(imageView.image, nil, nil, nil);
-        [UIView fs_showAlert:@"تم الحفظ ✅" message:@"تم حفظ الصورة بنجاح في ألبوم الصور"];
-    } else if (playerLayer && playerLayer.player.currentItem.asset) {
-        AVURLAsset *asset = (AVURLAsset *)playerLayer.player.currentItem.asset;
-        if ([asset isKindOfClass:[AVURLAsset class]]) {
-            NSURL *url = asset.URL;
-            NSData *data = [NSData dataWithContentsOfURL:url];
-            NSString *path = [NSTemporaryDirectory() stringByAppendingPathComponent:@"savedVideo.mp4"];
-            [data writeToFile:path atomically:YES];
-            UISaveVideoAtPathToSavedPhotosAlbum(path, nil, nil, nil);
-            [UIView fs_showAlert:@"تم الحفظ 🎥" message:@"تم حفظ الفيديو بنجاح في ألبوم الصور"];
-        }
-    } else {
-        [UIView fs_showAlert:@"⚠️ لم يتم العثور على محتوى" message:@"لم يتم العثور على صورة أو فيديو لحفظه."];
-    }
+%hook AVURLAsset
++ (instancetype)URLAssetWithURL:(NSURL *)URL options:(NSDictionary *)options {
+    @try {
+        NSLog(@"[Hook][AVURLAsset] URLAssetWithURL: %@", URL);
+    } @catch (NSException *e) { }
+    return %orig(URL, options);
 }
-
-@end
-
-
-// ------- مراقبة مستمرة لظهور الصور/الفيديو -------
-
-@interface UIWindow (FileSaverMonitor)
-- (void)fs_startMonitoring;
-@end
-
-@implementation UIWindow (FileSaverMonitor)
-
-- (void)fs_startMonitoring {
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        NSTimer *timer = [NSTimer scheduledTimerWithTimeInterval:1.0
-                                                          target:self
-                                                        selector:@selector(fs_checkForMedia)
-                                                        userInfo:nil
-                                                         repeats:YES];
-        [[NSRunLoop mainRunLoop] addTimer:timer forMode:NSRunLoopCommonModes];
-    });
-}
-
-- (void)fs_checkForMedia {
-    BOOL foundMedia = NO;
-    for (UIView *subview in self.subviews) {
-        if ([subview isKindOfClass:[UIImageView class]]) {
-            foundMedia = YES;
-            break;
-        }
-        for (CALayer *layer in subview.layer.sublayers) {
-            if ([layer isKindOfClass:[AVPlayerLayer class]]) {
-                foundMedia = YES;
-                break;
-            }
-        }
-    }
-
-    UIButton *btn = (UIButton *)[self viewWithTag:0xFA500001001];
-    if (!btn) {
-        btn = [UIButton buttonWithType:UIButtonTypeSystem];
-        btn.frame = CGRectMake(self.bounds.size.width - 80, self.bounds.size.height - 150, 60, 60);
-        btn.layer.cornerRadius = 30;
-        btn.backgroundColor = [[UIColor systemBlueColor] colorWithAlphaComponent:0.8];
-        [btn setTitle:@"⬇️" forState:UIControlStateNormal];
-        btn.titleLabel.font = [UIFont boldSystemFontOfSize:26];
-        btn.tintColor = UIColor.whiteColor;
-        btn.tag = 0xFA500001001;
-        [btn addTarget:self action:@selector(fs_handleDownloadButtonTap:) forControlEvents:UIControlEventTouchUpInside];
-        btn.hidden = YES;
-        [self addSubview:btn];
-    }
-
-    // عرض أو إخفاء الزر حسب الحالة
-    btn.hidden = !foundMedia;
-}
-
-@end
-
-
-// ------- تفعيل المراقبة عند تشغيل التطبيق -------
-
-%hook UIApplication
-
-- (void)didFinishLaunching:(NSNotification *)notification {
-    %orig;
-    UIWindow *keyWindow = UIApplication.sharedApplication.keyWindow;
-    [keyWindow fs_startMonitoring];
-}
-
 %end
+
+%hook NSURLSession
+- (NSURLSessionDataTask *)dataTaskWithRequest:(NSURLRequest *)request completionHandler:(void (^)(NSData *data, NSURLResponse *response, NSError *error))completionHandler {
+    @try {
+        NSURL *u = request.URL;
+        if (u) {
+            NSLog(@"[Hook][NSURLSession] request URL: %@", u.absoluteString);
+        } else {
+            NSLog(@"[Hook][NSURLSession] request (no URL) - %@", request);
+        }
+    } @catch (NSException *e) { }
+    return %orig(request, completionHandler);
+}
+%end
+
+%hook AVPlayerItem
+- (instancetype)initWithAsset:(AVAsset *)asset {
+    @try {
+        NSLog(@"[Hook][AVPlayerItem] initWithAsset: %@", asset);
+        if ([asset isKindOfClass:[AVURLAsset class]]) {
+            NSURL *u = ((AVURLAsset *)asset).URL;
+            NSLog(@"[Hook][AVPlayerItem] asset URL: %@", u);
+        }
+    } @catch (NSException *e) { }
+    return %orig(asset);
+}
+%end
+
+// optional: also hook playerItem's setAsset: if applicable
+%hook AVPlayerItem
+- (void)setAsset:(AVAsset *)asset {
+    @try {
+        NSLog(@"[Hook][AVPlayerItem] setAsset: %@", asset);
+        if ([asset isKindOfClass:[AVURLAsset class]]) {
+            NSURL *u = ((AVURLAsset *)asset).URL;
+            NSLog(@"[Hook][AVPlayerItem] setAsset URL: %@", u);
+        }
+    } @catch (NSException *e) { }
+    %orig(asset);
+}
+%end
+
+// print view tree automatically on viewDidAppear for debugging
+%hook UIViewController
+- (void)viewDidAppear:(BOOL)animated {
+    %orig;
+    @try {
+        // طباعة الشجرة بعد تأخير بسيط ليتم ترتيب الـ subviews
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.25 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            printCurrentWindowViewTree();
+        });
+    } @catch (NSException *e) {
+        NSLog(@"[Hook][UIViewController] exception: %@", e.reason);
+    }
+}
+%end
+
+#pragma mark - ctor: log and optionally trigger an initial view tree print
+
+%ctor {
+    @try {
+        NSLog(@"[Hook] AVURLAsset/NSURLSession/AVPlayerItem hooks installed.");
+        // اطبع tree واحد عند تحميل التويك لتبدأ الفحص
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.8 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            printCurrentWindowViewTree();
+        });
+    } @catch (NSException *e) {
+        NSLog(@"[Hook] ctor exception: %@", e.reason);
+    }
+}
