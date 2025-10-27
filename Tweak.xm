@@ -2,6 +2,9 @@
 #import <AVFoundation/AVFoundation.h>
 #import <Photos/Photos.h>
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
+#import <objc/runtime.h>
+
+static void *popupHandlerKey = &popupHandlerKey;
 
 @interface CustomPopupView : UIView
 @property (nonatomic, strong) UIVisualEffectView *blurView;
@@ -47,8 +50,6 @@
         [self.blurView.contentView addSubview:button];
     }
 }
-
-#pragma mark - Actions
 
 - (void)playClickSound {
     NSString *path = [[NSBundle mainBundle] pathForResource:@"click" ofType:@"wav"];
@@ -100,7 +101,7 @@
     [self playClickSound];
     UIDocumentPickerViewController *picker;
     if (@available(iOS 14.0, *)) {
-        picker = [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:@[[UTType folder]] asCopy:NO];
+        picker = [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:@[[UTType folderType]] asCopy:NO];
     } else {
         picker = [[UIDocumentPickerViewController alloc] initWithDocumentTypes:@[@"public.folder"] inMode:UIDocumentPickerModeOpen];
     }
@@ -112,18 +113,16 @@
 
 @end
 
-// ---------------- AVPlayer و UIImage مراقبة ----------------
+// ---------------- AVPlayer Hook ----------------
 %hook AVPlayer
-
 - (void)play {
     %orig;
-    [self startObservingMedia];
-}
-
-- (void)startObservingMedia {
     __weak typeof(self) weakSelf = self;
-    [self addPeriodicTimeObserverForInterval:CMTimeMakeWithSeconds(1, 1) queue:dispatch_get_main_queue() usingBlock:^(CMTime time) {
+    [self addPeriodicTimeObserverForInterval:CMTimeMakeWithSeconds(1, 1)
+                                      queue:dispatch_get_main_queue()
+                                 usingBlock:^(CMTime time) {
         __strong typeof(weakSelf) strongSelf = weakSelf;
+        if (!strongSelf) return;
         AVAsset *asset = strongSelf.currentItem.asset;
         if ([asset isKindOfClass:[AVURLAsset class]]) {
             NSURL *url = ((AVURLAsset *)asset).URL;
@@ -145,11 +144,10 @@
         }
     }];
 }
-
 %end
 
+// ---------------- UIImageView Hook ----------------
 %hook UIImageView
-
 - (void)setImage:(UIImage *)image {
     %orig;
     if (image) {
@@ -162,7 +160,6 @@
         }];
     }
 }
-
 %end
 
 // ---------------- زر عائم ----------------
@@ -178,12 +175,8 @@
         floatingBtn.backgroundColor = [[UIColor systemBlueColor] colorWithAlphaComponent:0.5];
         floatingBtn.layer.cornerRadius = 30;
         floatingBtn.clipsToBounds = YES;
-        [floatingBtn addTarget:nil action:@selector(showPopup) forControlEvents:UIControlEventTouchUpInside];
-        [window addSubview:floatingBtn];
-        [window makeKeyAndVisible];
 
-        // إضافة طريقة عرض Popup
-        id popupHandler = ^{
+        void (^popupHandler)(void) = ^{
             UIWindow *mainWindow = [UIApplication sharedApplication].keyWindow;
             CustomPopupView *popup = [[CustomPopupView alloc] initWithFrame:mainWindow.bounds];
             popup.alpha = 0.0;
@@ -192,18 +185,17 @@
                 popup.alpha = 1.0;
             }];
         };
-        objc_setAssociatedObject(floatingBtn, @"popupHandler", popupHandler, OBJC_ASSOCIATION_COPY_NONATOMIC);
+        objc_setAssociatedObject(floatingBtn, popupHandlerKey, popupHandler, OBJC_ASSOCIATION_COPY_NONATOMIC);
+        [floatingBtn addTarget:window action:@selector(triggerPopup:) forControlEvents:UIControlEventTouchUpInside];
+
+        [window addSubview:floatingBtn];
+        [window makeKeyAndVisible];
     });
 }
 
-// ---------------- عرض Popup عند الضغط ----------------
-%hook UIButton
-- (void)sendAction:(SEL)action to:(id)target forEvent:(UIEvent *)event {
-    if (objc_getAssociatedObject(self, @"popupHandler")) {
-        void (^handler)(void) = objc_getAssociatedObject(self, @"popupHandler");
-        handler();
-        return;
-    }
-    %orig;
+%hook UIWindow
+- (void)triggerPopup:(UIButton *)sender {
+    void (^handler)(void) = objc_getAssociatedObject(sender, popupHandlerKey);
+    if (handler) handler();
 }
 %end
