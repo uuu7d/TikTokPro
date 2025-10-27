@@ -2,9 +2,6 @@
 #import <AVFoundation/AVFoundation.h>
 #import <Photos/Photos.h>
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
-#import <objc/runtime.h>
-
-static void *popupHandlerKey = &popupHandlerKey;
 
 @interface CustomPopupView : UIView
 @property (nonatomic, strong) UIVisualEffectView *blurView;
@@ -31,8 +28,8 @@ static void *popupHandlerKey = &popupHandlerKey;
 }
 
 - (void)setupButtons {
-    NSArray *titles = @[@"🧹 تنظيف الكاش", @"🔁 إعادة التشغيل", @"❌ إغلاق الأداة", @"📂 تصفح ملفات التطبيق"];
-    SEL actions[] = {@selector(cleanCache), @selector(restartApp), @selector(closePopup), @selector(openSandbox)};
+    NSArray *titles = @[@"🧹 تنظيف الكاش", @"🔁 إعادة التشغيل", @"❌ إغلاق"];
+    SEL actions[] = {@selector(cleanCache), @selector(restartApp), @selector(closePopup)};
 
     CGFloat buttonWidth = self.frame.size.width - 60;
     CGFloat buttonHeight = 50;
@@ -51,6 +48,8 @@ static void *popupHandlerKey = &popupHandlerKey;
     }
 }
 
+#pragma mark - Actions
+
 - (void)playClickSound {
     NSString *path = [[NSBundle mainBundle] pathForResource:@"click" ofType:@"wav"];
     if (!path) return;
@@ -61,8 +60,10 @@ static void *popupHandlerKey = &popupHandlerKey;
 
 - (void)cleanCache {
     [self playClickSound];
-    NSString *cachePath = [NSHomeDirectory() stringByAppendingPathComponent:@"Library/Caches"];
+    NSString *appPath = NSHomeDirectory();
+    NSString *cachePath = [appPath stringByAppendingPathComponent:@"Library/Caches"];
     NSArray *files = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:cachePath error:nil];
+
     unsigned long long totalSize = 0;
     for (NSString *file in files) {
         NSString *filePath = [cachePath stringByAppendingPathComponent:file];
@@ -70,8 +71,10 @@ static void *popupHandlerKey = &popupHandlerKey;
         totalSize += [attrs fileSize];
         [[NSFileManager defaultManager] removeItemAtPath:filePath error:nil];
     }
+
     double mb = totalSize / (1024.0 * 1024.0);
     NSString *msg = [NSString stringWithFormat:@"تم حذف %.2f ميغابايت من ملفات الكاش.", mb];
+
     dispatch_async(dispatch_get_main_queue(), ^{
         UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"✅ تم التنظيف"
                                                                        message:msg
@@ -97,105 +100,61 @@ static void *popupHandlerKey = &popupHandlerKey;
     }];
 }
 
-- (void)openSandbox {
-    [self playClickSound];
-    UIDocumentPickerViewController *picker;
-    if (@available(iOS 14.0, *)) {
-        picker = [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:@[[UTType folderType]] asCopy:NO];
-    } else {
-        picker = [[UIDocumentPickerViewController alloc] initWithDocumentTypes:@[@"public.folder"] inMode:UIDocumentPickerModeOpen];
-    }
-    picker.modalPresentationStyle = UIModalPresentationFullScreen;
-    dispatch_async(dispatch_get_main_queue(), ^{
-        [[UIApplication sharedApplication].keyWindow.rootViewController presentViewController:picker animated:YES completion:nil];
-    });
-}
-
 @end
 
-// ---------------- AVPlayer Hook ----------------
-%hook AVPlayer
-- (void)play {
-    %orig;
-    __weak typeof(self) weakSelf = self;
-    [self addPeriodicTimeObserverForInterval:CMTimeMakeWithSeconds(1, 1)
-                                      queue:dispatch_get_main_queue()
-                                 usingBlock:^(CMTime time) {
-        __strong typeof(weakSelf) strongSelf = weakSelf;
-        if (!strongSelf) return;
-        AVAsset *asset = strongSelf.currentItem.asset;
-        if ([asset isKindOfClass:[AVURLAsset class]]) {
-            NSURL *url = ((AVURLAsset *)asset).URL;
-            if (url) {
-                [PHPhotoLibrary requestAuthorization:^(PHAuthorizationStatus status) {
-                    if (status == PHAuthorizationStatusAuthorized) {
-                        NSData *data = [NSData dataWithContentsOfURL:url];
-                        if (data) {
-                            NSString *ext = url.pathExtension.lowercaseString;
-                            NSString *filename = [NSTemporaryDirectory() stringByAppendingPathComponent:[NSString stringWithFormat:@"video.%@", ext]];
-                            [data writeToFile:filename atomically:YES];
-                            [[PHPhotoLibrary sharedPhotoLibrary] performChanges:^{
-                                [PHAssetChangeRequest creationRequestForAssetFromVideoAtFileURL:[NSURL fileURLWithPath:filename]];
-                            } completionHandler:nil];
-                        }
-                    }
-                }];
-            }
-        }
-    }];
-}
-%end
+// Helper function to save media from AVPlayer
+void SaveMediaFromURL(NSURL *mediaURL) {
+    NSString *fileExt = mediaURL.pathExtension.lowercaseString;
+    NSData *data = [NSData dataWithContentsOfURL:mediaURL];
+    if (!data) return;
 
-// ---------------- UIImageView Hook ----------------
-%hook UIImageView
-- (void)setImage:(UIImage *)image {
-    %orig;
-    if (image) {
-        [PHPhotoLibrary requestAuthorization:^(PHAuthorizationStatus status) {
-            if (status == PHAuthorizationStatusAuthorized) {
-                [[PHPhotoLibrary sharedPhotoLibrary] performChanges:^{
-                    [PHAssetChangeRequest creationRequestForAssetFromImage:image];
-                } completionHandler:nil];
-            }
-        }];
+    if ([fileExt isEqualToString:@"jpg"] || [fileExt isEqualToString:@"png"]) {
+        UIImage *image = [UIImage imageWithData:data];
+        if (image) {
+            [[PHPhotoLibrary sharedPhotoLibrary] performChanges:^{
+                [PHAssetChangeRequest creationRequestForAssetFromImage:image];
+            } completionHandler:nil];
+        }
+    } else if ([fileExt isEqualToString:@"mp4"] || [fileExt isEqualToString:@"mov"]) {
+        NSString *tmpPath = [NSTemporaryDirectory() stringByAppendingPathComponent:mediaURL.lastPathComponent];
+        [data writeToFile:tmpPath atomically:YES];
+        NSURL *destination = [NSURL fileURLWithPath:tmpPath];
+        [[PHPhotoLibrary sharedPhotoLibrary] performChanges:^{
+            [PHAssetChangeRequest creationRequestForAssetFromVideoAtFileURL:destination];
+        } completionHandler:nil];
     }
 }
-%end
 
-// ---------------- زر عائم ----------------
 %ctor {
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        UIWindow *window = [[UIWindow alloc] initWithFrame:CGRectMake(UIScreen.mainScreen.bounds.size.width-80, UIScreen.mainScreen.bounds.size.height-150, 60, 60)];
-        window.windowLevel = UIWindowLevelAlert + 1;
-        window.backgroundColor = UIColor.clearColor;
+    if (@available(iOS 16.0, *)) {
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            UIWindow *window = [UIApplication sharedApplication].keyWindow;
 
-        UIButton *floatingBtn = [UIButton buttonWithType:UIButtonTypeSystem];
-        floatingBtn.frame = window.bounds;
-        [floatingBtn setTitle:@"🛠️" forState:UIControlStateNormal];
-        floatingBtn.backgroundColor = [[UIColor systemBlueColor] colorWithAlphaComponent:0.5];
-        floatingBtn.layer.cornerRadius = 30;
-        floatingBtn.clipsToBounds = YES;
+            // Floating button
+            UIButton *floatingBtn = [UIButton buttonWithType:UIButtonTypeCustom];
+            floatingBtn.frame = CGRectMake(window.frame.size.width - 70, window.frame.size.height - 150, 60, 60);
+            floatingBtn.backgroundColor = [[UIColor systemBlueColor] colorWithAlphaComponent:0.7];
+            floatingBtn.layer.cornerRadius = 30;
+            [floatingBtn setTitle:@"⚡" forState:UIControlStateNormal];
+            [floatingBtn addTarget:nil action:@selector(showPopup) forControlEvents:UIControlEventTouchUpInside];
+            [window addSubview:floatingBtn];
 
-        void (^popupHandler)(void) = ^{
-            UIWindow *mainWindow = [UIApplication sharedApplication].keyWindow;
-            CustomPopupView *popup = [[CustomPopupView alloc] initWithFrame:mainWindow.bounds];
-            popup.alpha = 0.0;
-            [mainWindow addSubview:popup];
-            [UIView animateWithDuration:0.4 animations:^{
-                popup.alpha = 1.0;
-            }];
-        };
-        objc_setAssociatedObject(floatingBtn, popupHandlerKey, popupHandler, OBJC_ASSOCIATION_COPY_NONATOMIC);
-        [floatingBtn addTarget:window action:@selector(triggerPopup:) forControlEvents:UIControlEventTouchUpInside];
+            // Popup handler
+            objc_setAssociatedObject(floatingBtn, @"popupHandler", ^{
+                CustomPopupView *popup = [[CustomPopupView alloc] initWithFrame:window.bounds];
+                popup.alpha = 0.0;
+                [window addSubview:popup];
+                [UIView animateWithDuration:0.4 animations:^{
+                    popup.alpha = 1.0;
+                }];
+            }, OBJC_ASSOCIATION_COPY_NONATOMIC);
 
-        [window addSubview:floatingBtn];
-        [window makeKeyAndVisible];
-    });
+            // Method to trigger popup
+            SEL showPopupSEL = @selector(showPopup);
+            class_addMethod([floatingBtn class], showPopupSEL, imp_implementationWithBlock(^{
+                void (^handler)(void) = objc_getAssociatedObject(floatingBtn, @"popupHandler");
+                if (handler) handler();
+            }), "v@:");
+        });
+    }
 }
-
-%hook UIWindow
-- (void)triggerPopup:(UIButton *)sender {
-    void (^handler)(void) = objc_getAssociatedObject(sender, popupHandlerKey);
-    if (handler) handler();
-}
-%end
