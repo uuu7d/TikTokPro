@@ -4,8 +4,24 @@
 
 %hook UIView
 
-// ⬇️ دالة عرض زر التحميل
-%new
+// ✅ التصريحات المسبقة (Prototypes)
+%new - (void)__sg_addDownloadButton;
+%new - (void)__sg_handleDownloadTap;
+%new - (void)__sg_saveImageToPhotos:(UIImage *)image;
+%new - (void)__sg_image:(UIImage *)image didFinishSavingWithError:(NSError *)error contextInfo:(void *)contextInfo;
+%new - (void)__sg_saveVideoToPhotos:(NSURL *)videoURL;
+%new - (void)__sg_showHUD:(NSString *)text;
+%new - (void)__sg_showAlertWithTitle:(NSString *)title message:(NSString *)message;
+
+// ⬇️ إضافة زر التحميل
+- (void)didMoveToWindow {
+    %orig;
+    if ([self isKindOfClass:[UIImageView class]] || [self.layer isKindOfClass:[AVPlayerLayer class]]) {
+        [self __sg_addDownloadButton];
+    }
+}
+
+// ⬇️ دالة إنشاء الزر
 - (void)__sg_addDownloadButton {
     UIButton *downloadButton = [UIButton buttonWithType:UIButtonTypeSystem];
     [downloadButton setTitle:@"⬇️" forState:UIControlStateNormal];
@@ -25,12 +41,10 @@
     });
 }
 
-// ⬇️ حدث الضغط على الزر
-%new
+// ⬇️ عند الضغط على الزر
 - (void)__sg_handleDownloadTap {
     NSLog(@"[SaveGram] Download button tapped");
-    
-    // نحاول إيجاد الفيديو أو الصورة في الـ subviews
+
     UIImageView *imageView = nil;
     AVPlayerLayer *playerLayer = nil;
 
@@ -47,7 +61,6 @@
     } else if (playerLayer.player.currentItem) {
         AVPlayerItem *item = playerLayer.player.currentItem;
         AVAsset *asset = item.asset;
-
         if ([asset isKindOfClass:[AVURLAsset class]]) {
             NSURL *url = [(AVURLAsset *)asset URL];
             [self __sg_saveVideoToPhotos:url];
@@ -60,19 +73,16 @@
 }
 
 // ⬇️ حفظ الصورة
-%new
 - (void)__sg_saveImageToPhotos:(UIImage *)image {
     [self __sg_showHUD:@"Saving image..."];
     UIImageWriteToSavedPhotosAlbum(image, self, @selector(__sg_image:didFinishSavingWithError:contextInfo:), NULL);
 }
 
-%new
 - (void)__sg_image:(UIImage *)image didFinishSavingWithError:(NSError *)error contextInfo:(void *)contextInfo {
     [self __sg_showHUD:(error ? @"❌ Failed to save image." : @"✅ Image Saved!")];
 }
 
-// ⬇️ حفظ الفيديو (الإصدار الذكي مع اسم المستخدم)
-%new
+// ⬇️ حفظ الفيديو (مع اسم المستخدم)
 - (void)__sg_saveVideoToPhotos:(NSURL *)videoURL {
     [self __sg_showHUD:@"Preparing video..."];
 
@@ -100,9 +110,8 @@
             return;
         }
 
-        // 🔤 نحاول تحديد اسم المستخدم
+        // 🔤 اسم المستخدم
         NSString *username = nil;
-
         UIResponder *responder = self;
         while (responder) {
             if ([responder respondsToSelector:@selector(username)]) {
@@ -154,8 +163,7 @@
     });
 }
 
-// ⬇️ تنبيهات وHUD
-%new
+// ⬇️ HUD و Alerts
 - (void)__sg_showHUD:(NSString *)text {
     dispatch_async(dispatch_get_main_queue(), ^{
         UILabel *hud = [self viewWithTag:7777];
@@ -178,7 +186,6 @@
     });
 }
 
-%new
 - (void)__sg_showAlertWithTitle:(NSString *)title message:(NSString *)message {
     dispatch_async(dispatch_get_main_queue(), ^{
         UIAlertController *alert = [UIAlertController alertControllerWithTitle:title
