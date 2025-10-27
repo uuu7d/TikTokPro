@@ -29,14 +29,32 @@
 
 %hook UIView
 
-// Ensure adding button once view moves to window
 - (void)didMoveToWindow {
     %orig;
-    // Add only for image views or views that have AVPlayerLayer
-    if ([self isKindOfClass:[UIImageView class]] || [self.layer isKindOfClass:[AVPlayerLayer class]]) {
+
+    // تأكد أن الـ view له نافذة وأنه في التطبيق المستهدف (مثلاً TikTok)
+    if (!self.window) return;
+
+    // تجاهل UISearchBar و UITextField لتجنب الكراش عند الضغط على مربع البحث
+    if ([self isKindOfClass:[UISearchBar class]] || [self isKindOfClass:[UITextField class]]) {
+        return;
+    }
+
+    // تأكد أن الـ view يحتوي على صورة أو فيديو (لتجنب التنفيذ العشوائي)
+    BOOL hasMedia = NO;
+    for (UIView *sub in self.subviews) {
+        if ([sub isKindOfClass:[UIImageView class]] || [sub isKindOfClass:NSClassFromString(@"AVPlayerView")]) {
+            hasMedia = YES;
+            break;
+        }
+    }
+
+    if (hasMedia) {
         [self __sg_addDownloadButton];
     }
 }
+
+%end
 
 %new
 - (void)__sg_addDownloadButton {
