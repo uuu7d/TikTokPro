@@ -1,0 +1,55 @@
+name: inject-dylib
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+jobs:
+  inject:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Homebrew deps
+        run: |
+          brew update
+          brew install ldid || true
+
+      - name: Prepare workspace
+        run: |
+          mkdir -p work
+
+      - name: Download IPA (if using Releases) - optional
+        run: |
+          # مثال: curl -L -o artifacts/MyApp.ipa "https://github.com/USER/REPO/releases/download/v1/MyApp.ipa"
+          ls -la artifacts || true
+
+      - name: Build Theos tweak (optional)
+        run: |
+          # اختياري: إن أردت أن تبني هنا، تأكد أن Theos مهيأ في الـ runner
+          # make clean && make package FINALPACKAGE=1 || true
+          ls -la theos || true
+
+      - name: Build insert_dylib
+        run: |
+          git clone https://github.com/Tyilo/insert_dylib.git /tmp/insert_dylib || true
+          cd /tmp/insert_dylib
+          make || true
+          cp insert_dylib $GITHUB_WORKSPACE/tools/insert_dylib || true
+          chmod +x $GITHUB_WORKSPACE/tools/insert_dylib
+
+      - name: Inject (uses inject.sh)
+        env:
+          IPA_PATH: artifacts/MyApp.ipa
+          DYLIB_PATH: theos/deploy/FileSaverTweak.dylib
+          APP_NAME: MyApp
+        run: |
+          ./inject.sh "$IPA_PATH" "$DYLIB_PATH"
+
+      - name: Upload resulting IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: Injected-IPA
+          path: Injected.ipa
