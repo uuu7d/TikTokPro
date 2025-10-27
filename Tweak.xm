@@ -1,163 +1,95 @@
 #import <UIKit/UIKit.h>
-#import <AVFoundation/AVFoundation.h>
+#import "MBProgressHUD.h"
 #import <Photos/Photos.h>
-#import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
-#import <objc/runtime.h> // ضروري لاستخدام objc_get/setAssociatedObject و imp_implementationWithBlock
+#import <AVFoundation/AVFoundation.h>
+#import <AVKit/AVKit.h>
 
-@interface CustomPopupView : UIView
-@property (nonatomic, strong) UIVisualEffectView *blurView;
-@property (nonatomic, strong) AVAudioPlayer *audioPlayer;
-@end
+%hook UIView
 
-@implementation CustomPopupView
+// اعتراض long press على أي UIView
+- (void)addGestureRecognizer:(UIGestureRecognizer *)gesture {
+    %orig;
 
-- (instancetype)initWithFrame:(CGRect)frame {
-    self = [super initWithFrame:frame];
-    if (self) {
-        [self setupBlurBackground];
-        [self setupButtons];
-    }
-    return self;
-}
-
-- (void)setupBlurBackground {
-    UIBlurEffect *blurEffect = [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemMaterialDark];
-    self.blurView = [[UIVisualEffectView alloc] initWithEffect:blurEffect];
-    self.blurView.frame = self.bounds;
-    self.blurView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-    [self addSubview:self.blurView];
-}
-
-- (void)setupButtons {
-    NSArray *titles = @[@"🧹 تنظيف الكاش", @"🔁 إعادة التشغيل", @"❌ إغلاق"];
-    SEL actions[] = {@selector(cleanCache), @selector(restartApp), @selector(closePopup)};
-
-    CGFloat buttonWidth = self.frame.size.width - 60;
-    CGFloat buttonHeight = 50;
-    CGFloat startY = 150;
-
-    for (int i = 0; i < titles.count; i++) {
-        UIButton *button = [UIButton buttonWithType:UIButtonTypeSystem];
-        button.frame = CGRectMake(30, startY + (i * 70), buttonWidth, buttonHeight);
-        [button setTitle:titles[i] forState:UIControlStateNormal];
-        [button setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
-        button.backgroundColor = [[UIColor systemBlueColor] colorWithAlphaComponent:0.25];
-        button.layer.cornerRadius = 12.0;
-        button.clipsToBounds = YES;
-        [button addTarget:self action:actions[i] forControlEvents:UIControlEventTouchUpInside];
-        [self.blurView.contentView addSubview:button];
+    if ([self isKindOfClass:[UIImageView class]] || [self.layer isKindOfClass:[AVPlayerLayer class]]) {
+        UILongPressGestureRecognizer *longPress = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(__sg_handleLongPress:)];
+        longPress.minimumPressDuration = 0.5;
+        [self addGestureRecognizer:longPress];
+        self.userInteractionEnabled = YES;
     }
 }
 
-#pragma mark - Actions
+- (void)__sg_handleLongPress:(UILongPressGestureRecognizer *)gesture {
+    if (gesture.state != UIGestureRecognizerStateBegan) return;
 
-- (void)playClickSound {
-    NSString *path = [[NSBundle mainBundle] pathForResource:@"click" ofType:@"wav"];
-    if (!path) return;
-    NSURL *url = [NSURL fileURLWithPath:path];
-    self.audioPlayer = [[AVAudioPlayer alloc] initWithContentsOfURL:url error:nil];
-    [self.audioPlayer play];
-}
-
-- (void)cleanCache {
-    [self playClickSound];
-    NSString *appPath = NSHomeDirectory();
-    NSString *cachePath = [appPath stringByAppendingPathComponent:@"Library/Caches"];
-    NSArray *files = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:cachePath error:nil];
-
-    unsigned long long totalSize = 0;
-    for (NSString *file in files) {
-        NSString *filePath = [cachePath stringByAppendingPathComponent:file];
-        NSDictionary *attrs = [[NSFileManager defaultManager] attributesOfItemAtPath:filePath error:nil];
-        totalSize += [attrs fileSize];
-        [[NSFileManager defaultManager] removeItemAtPath:filePath error:nil];
+    UIWindow *keyWindow = [UIApplication sharedApplication].keyWindow;
+    UIViewController *topVC = keyWindow.rootViewController;
+    while (topVC.presentedViewController) {
+        topVC = topVC.presentedViewController;
     }
 
-    double mb = totalSize / (1024.0 * 1024.0);
-    NSString *msg = [NSString stringWithFormat:@"تم حذف %.2f ميغابايت من ملفات الكاش.", mb];
+    // التحقق إن كانت الصورة موجودة
+    UIImage *image = nil;
+    NSURL *videoURL = nil;
 
-    dispatch_async(dispatch_get_main_queue(), ^{
-        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"✅ تم التنظيف"
-                                                                       message:msg
-                                                                preferredStyle:UIAlertControllerStyleAlert];
-        [alert addAction:[UIAlertAction actionWithTitle:@"موافق" style:UIAlertActionStyleDefault handler:nil]];
-        [[UIApplication sharedApplication].keyWindow.rootViewController presentViewController:alert animated:YES completion:nil];
-    });
-}
-
-- (void)restartApp {
-    [self playClickSound];
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.6 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        exit(0);
-    });
-}
-
-- (void)closePopup {
-    [self playClickSound];
-    [UIView animateWithDuration:0.3 animations:^{
-        self.alpha = 0.0;
-    } completion:^(BOOL finished) {
-        [self removeFromSuperview];
-    }];
-}
-
-@end
-
-// Helper to save media
-void SaveMediaFromURL(NSURL *mediaURL) {
-    NSString *fileExt = mediaURL.pathExtension.lowercaseString;
-    NSData *data = [NSData dataWithContentsOfURL:mediaURL];
-    if (!data) return;
-
-    if ([fileExt isEqualToString:@"jpg"] || [fileExt isEqualToString:@"png"]) {
-        UIImage *image = [UIImage imageWithData:data];
-        if (image) {
-            [[PHPhotoLibrary sharedPhotoLibrary] performChanges:^{
-                [PHAssetChangeRequest creationRequestForAssetFromImage:image];
-            } completionHandler:nil];
+    if ([gesture.view isKindOfClass:[UIImageView class]]) {
+        image = ((UIImageView *)gesture.view).image;
+    } else if ([gesture.view.layer isKindOfClass:[AVPlayerLayer class]]) {
+        AVPlayerLayer *playerLayer = (AVPlayerLayer *)gesture.view.layer;
+        AVPlayerItem *item = playerLayer.player.currentItem;
+        if (item && [item.asset isKindOfClass:[AVURLAsset class]]) {
+            videoURL = ((AVURLAsset *)item.asset).URL;
         }
-    } else if ([fileExt isEqualToString:@"mp4"] || [fileExt isEqualToString:@"mov"]) {
-        NSString *tmpPath = [NSTemporaryDirectory() stringByAppendingPathComponent:mediaURL.lastPathComponent];
-        [data writeToFile:tmpPath atomically:YES];
-        NSURL *destination = [NSURL fileURLWithPath:tmpPath];
+    }
+
+    if (!image && !videoURL) return;
+
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"SaveGram"
+                                                                   message:@"Save this media?"
+                                                            preferredStyle:UIAlertControllerStyleActionSheet];
+    [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"Save" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+        if (image) {
+            [self __sg_saveImageToPhotos:image];
+        } else if (videoURL) {
+            [self __sg_saveVideoToPhotos:videoURL];
+        }
+    }]];
+
+    [topVC presentViewController:alert animated:YES completion:nil];
+}
+
+- (void)__sg_saveImageToPhotos:(UIImage *)image {
+    UIWindow *keyWindow = [UIApplication sharedApplication].keyWindow;
+    MBProgressHUD *hud = [MBProgressHUD showHUDAddedTo:keyWindow animated:YES];
+    hud.labelText = @"Saving image...";
+
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
         [[PHPhotoLibrary sharedPhotoLibrary] performChanges:^{
-            [PHAssetChangeRequest creationRequestForAssetFromVideoAtFileURL:destination];
-        } completionHandler:nil];
-    }
+            [PHAssetChangeRequest creationRequestForAssetFromImage:image];
+        } completionHandler:^(BOOL success, NSError * _Nullable error) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                hud.labelText = success ? @"Saved!" : @"Failed!";
+                [hud hide:YES afterDelay:1.0];
+            });
+        }];
+    });
 }
 
-// Floating button constructor
-static const void *popupHandlerKey = &popupHandlerKey;
+- (void)__sg_saveVideoToPhotos:(NSURL *)videoURL {
+    UIWindow *keyWindow = [UIApplication sharedApplication].keyWindow;
+    MBProgressHUD *hud = [MBProgressHUD showHUDAddedTo:keyWindow animated:YES];
+    hud.labelText = @"Saving video...";
 
-%ctor {
-    if (@available(iOS 16.0, *)) {
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-            UIWindow *window = [UIApplication sharedApplication].keyWindow;
-
-            UIButton *floatingBtn = [UIButton buttonWithType:UIButtonTypeCustom];
-            floatingBtn.frame = CGRectMake(window.frame.size.width - 70, window.frame.size.height - 150, 60, 60);
-            floatingBtn.backgroundColor = [[UIColor systemBlueColor] colorWithAlphaComponent:0.7];
-            floatingBtn.layer.cornerRadius = 30;
-            [floatingBtn setTitle:@"⚡" forState:UIControlStateNormal];
-            [window addSubview:floatingBtn];
-
-            void (^popupHandler)(void) = ^{
-                CustomPopupView *popup = [[CustomPopupView alloc] initWithFrame:window.bounds];
-                popup.alpha = 0.0;
-                [window addSubview:popup];
-                [UIView animateWithDuration:0.4 animations:^{
-                    popup.alpha = 1.0;
-                }];
-            };
-
-            objc_setAssociatedObject(floatingBtn, popupHandlerKey, popupHandler, OBJC_ASSOCIATION_COPY);
-
-            SEL showPopupSEL = @selector(showPopup);
-            class_addMethod([floatingBtn class], showPopupSEL, imp_implementationWithBlock(^{
-                void (^handler)(void) = objc_getAssociatedObject(floatingBtn, popupHandlerKey);
-                if (handler) handler();
-            }), "v@:");
-            [floatingBtn addTarget:floatingBtn action:showPopupSEL forControlEvents:UIControlEventTouchUpInside];
-        });
-    }
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
+        [[PHPhotoLibrary sharedPhotoLibrary] performChanges:^{
+            [PHAssetChangeRequest creationRequestForAssetFromVideoAtFileURL:videoURL];
+        } completionHandler:^(BOOL success, NSError * _Nullable error) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                hud.labelText = success ? @"Saved!" : @"Failed!";
+                [hud hide:YES afterDelay:1.0];
+            });
+        }];
+    });
 }
+
+%end
