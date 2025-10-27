@@ -112,6 +112,8 @@
         } completionHandler:^(BOOL success, NSError * _Nullable error) {
             dispatch_async(dispatch_get_main_queue(), ^{
                 [self __sg_showHUD:(success ? @"✅ Video Saved!" : @"❌ Failed to save video.")];
+NSLog(@"[SaveGram] videoURL: %@", videoURL);
+NSLog(@"[SaveGram] isFileURL: %d", [videoURL isFileURL]);
             });
         }];
     });
