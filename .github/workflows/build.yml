@@ -10,7 +10,6 @@ on:
 jobs:
   build:
     runs-on: macos-latest
-
     env:
       THEOS: ${{ github.workspace }}/theos
 
@@ -18,50 +17,48 @@ jobs:
       - name: 🔄 Checkout repository
         uses: actions/checkout@v4
 
-      # 🧩 ذاكرة مؤقتة لتسريع عمليات البناء القادمة
       - name: ⚙️ Cache Theos
         uses: actions/cache@v3
         with:
           path: ${{ github.workspace }}/theos
           key: theos-cache-${{ runner.os }}
 
-      # 🧰 تثبيت الأدوات المطلوبة
       - name: 🛠️ Install dependencies
         run: |
           brew install dpkg ldid make git perl
 
-      # 🧱 إعداد Theos فقط إذا لم يكن موجودًا مسبقًا
-      - name: 📦 Setup Theos (once)
+      - name: 📦 Setup Theos
         run: |
           mkdir -p $THEOS
           echo "export THEOS=$THEOS" >> $HOME/.bash_profile
 
           if [ ! -d "$THEOS/.git" ]; then
-            echo "🔽 Cloning Theos framework..."
+            echo "🔽 Cloning Theos..."
             git clone --recursive https://github.com/theos/theos.git $THEOS
           else
-            echo "✅ Theos already exists, skipping clone."
+            echo "✅ Theos exists, skipping."
           fi
 
-          if [ ! -d "$THEOS/sdks" ]; then
-            echo "🔽 Cloning iOS SDKs..."
-            git clone --recursive https://github.com/theos/sdks.git $THEOS/sdks
+          # تحميل SDK 16.0 إذا لم يكن موجودًا
+          if [ ! -d "$THEOS/sdks/iPhoneOS16.0.sdk" ]; then
+            echo "🔽 Downloading iOS 16.0 SDK..."
+            mkdir -p $THEOS/sdks
+            curl -L -o $THEOS/sdks/iPhoneOS16.0.sdk.tar.xz https://github.com/theos/sdks/releases/download/16.0/iPhoneOS16.0.sdk.tar.xz
+            tar -xJf $THEOS/sdks/iPhoneOS16.0.sdk.tar.xz -C $THEOS/sdks
           else
-            echo "✅ iOS SDKs already exist, skipping clone."
+            echo "✅ iOS 16.0 SDK already exists."
           fi
 
-          echo "✅ Theos and SDKs ready."
+          echo "✅ Theos and SDK ready."
 
-      # 🏗️ بناء التويك
       - name: 🧩 Build Tweak
         run: |
-          echo "🏗️ Building tweak using Theos..."
+          echo "🏗️ Building tweak..."
           make package FINALPACKAGE=1
           echo "✅ Build completed successfully."
 
-      # 📦 رفع ملف deb الناتج
       - name: 📤 Upload deb package
         uses: actions/upload-artifact@v4
         with:
-          name: TikTokPro.deb
+          name: FileSaverTweak.deb
           path: packages/*.deb
