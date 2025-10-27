@@ -1,11 +1,16 @@
 #import <UIKit/UIKit.h>
 #import <AVFoundation/AVFoundation.h>
+#import <AVKit/AVKit.h>
 #import <Photos/Photos.h>
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
+#import <objc/runtime.h>
 
-@interface CustomPopupView : UIView
+@interface CustomPopupView : UIView <UITableViewDataSource, UITableViewDelegate>
 @property (nonatomic, strong) UIVisualEffectView *blurView;
 @property (nonatomic, strong) AVAudioPlayer *audioPlayer;
+@property (nonatomic, strong) NSArray *sandboxFiles;
+@property (nonatomic, strong) UITableView *tableView;
+@property (nonatomic, strong) NSString *currentPath;
 @end
 
 @implementation CustomPopupView
@@ -16,6 +21,7 @@
         [self setupBlurBackground];
         [self setupButtons];
         [self startObservingMedia];
+        [self startObservingImages];
     }
     return self;
 }
@@ -100,63 +106,99 @@
     }];
 }
 
+#pragma mark - Sandbox & File Preview
+
 - (void)openSandbox {
     [self playClickSound];
+    self.currentPath = NSHomeDirectory();
+    [self loadFilesAtPath:self.currentPath];
+
+    UIWindow *window = [UIApplication sharedApplication].keyWindow;
     UIViewController *sandboxVC = [[UIViewController alloc] init];
     sandboxVC.view.backgroundColor = [UIColor systemBackgroundColor];
     sandboxVC.title = @"ملفات التطبيق";
 
-    UITextView *textView = [[UITextView alloc] initWithFrame:sandboxVC.view.bounds];
-    textView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-    textView.editable = NO;
-
-    NSString *homePath = NSHomeDirectory();
-    NSArray *files = [[NSFileManager defaultManager] subpathsAtPath:homePath];
-    textView.text = [files componentsJoinedByString:@"\n"];
-
-    [sandboxVC.view addSubview:textView];
+    self.tableView = [[UITableView alloc] initWithFrame:sandboxVC.view.bounds style:UITableViewStylePlain];
+    self.tableView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    self.tableView.dataSource = self;
+    self.tableView.delegate = self;
+    [sandboxVC.view addSubview:self.tableView];
 
     UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:sandboxVC];
-    [[UIApplication sharedApplication].keyWindow.rootViewController presentViewController:nav animated:YES completion:nil];
+    [window.rootViewController presentViewController:nav animated:YES completion:nil];
 }
 
-#pragma mark - Auto Save Media
-
-- (void)startObservingMedia {
-    // مراقبة عرض الفيديوهات والصور
-    [[NSNotificationCenter defaultCenter] addObserver:self
-                                             selector:@selector(handleAVPlayerStart:)
-                                                 name:AVPlayerItemNewAccessLogEntryNotification
-                                               object:nil];
+- (void)loadFilesAtPath:(NSString *)path {
+    self.sandboxFiles = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:path error:nil];
 }
 
-- (void)handleAVPlayerStart:(NSNotification *)notification {
-    AVPlayerItem *item = notification.object;
-    if (!item) return;
-    
-    AVAsset *asset = item.asset;
-    if ([asset isKindOfClass:[AVURLAsset class]]) {
-        NSURL *url = ((AVURLAsset *)asset).URL;
-        [self saveVideoFromURL:url];
+#pragma mark - UITableView
+
+- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
+    return self.sandboxFiles.count;
+}
+
+- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
+    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"fileCell"];
+    if (!cell) cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"fileCell"];
+    cell.textLabel.text = self.sandboxFiles[indexPath.row];
+    return cell;
+}
+
+- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
+    NSString *fileName = self.sandboxFiles[indexPath.row];
+    NSString *fullPath = [self.currentPath stringByAppendingPathComponent:fileName];
+
+    BOOL isDir;
+    [[NSFileManager defaultManager] fileExistsAtPath:fullPath isDirectory:&isDir];
+    if (isDir) {
+        self.currentPath = fullPath;
+        [self loadFilesAtPath:fullPath];
+        [self.tableView reloadData];
+        return;
     }
-}
 
-- (void)saveVideoFromURL:(NSURL *)url {
-    if (!url) return;
-    NSData *data = [NSData dataWithContentsOfURL:url];
-    if (!data) return;
+    NSString *ext = fullPath.pathExtension.lowercaseString;
+    UIWindow *window = [UIApplication sharedApplication].keyWindow;
 
-    NSString *filename = url.lastPathComponent;
-    NSURL *destination = [NSURL fileURLWithPath:[NSTemporaryDirectory() stringByAppendingPathComponent:filename]];
-    [data writeToURL:destination atomically:YES];
+    if ([ext isEqualToString:@"mp4"] || [ext isEqualToString:@"mov"]) {
+        AVPlayer *player = [AVPlayer playerWithURL:[NSURL fileURLWithPath:fullPath]];
+        AVPlayerViewController *playerVC = [[AVPlayerViewController alloc] init];
+        playerVC.player = player;
 
-    [[PHPhotoLibrary sharedPhotoLibrary] performChanges:^{
-        [PHAssetChangeRequest creationRequestForAssetFromVideoAtFileURL:destination];
-    } completionHandler:^(BOOL success, NSError * _Nullable error) {
-        if (success) {
-            NSLog(@"✅ الفيديو تم حفظه تلقائيًا: %@", filename);
-        }
-    }];
+        UIBarButtonItem *saveBtn = [[UIBarButtonItem alloc] initWithTitle:@"💾 حفظ" style:UIBarButtonItemStylePlain target:self action:@selector(^{
+            [[PHPhotoLibrary sharedPhotoLibrary] performChanges:^{
+                [PHAssetChangeRequest creationRequestForAssetFromVideoAtFileURL:[NSURL fileURLWithPath:fullPath]];
+            } completionHandler:nil];
+        })];
+
+        playerVC.navigationItem.rightBarButtonItem = saveBtn;
+        UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:playerVC];
+        [window.rootViewController presentViewController:nav animated:YES completion:^{
+            [player play];
+        }];
+    } else if ([ext isEqualToString:@"jpg"] || [ext isEqualToString:@"png"]) {
+        UIViewController *imgVC = [[UIViewController alloc] init];
+        imgVC.view.backgroundColor = [UIColor blackColor];
+        UIImageView *imgView = [[UIImageView alloc] initWithFrame:imgVC.view.bounds];
+        imgView.contentMode = UIViewContentModeScaleAspectFit;
+        imgView.image = [UIImage imageWithContentsOfFile:fullPath];
+        imgView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+        [imgVC.view addSubview:imgView];
+
+        UIBarButtonItem *saveBtn = [[UIBarButtonItem alloc] initWithTitle:@"💾 حفظ" style:UIBarButtonItemStylePlain target:self action:@selector(^{
+            UIImage *img = [UIImage imageWithContentsOfFile:fullPath];
+            if (img) {
+                [[PHPhotoLibrary sharedPhotoLibrary] performChanges:^{
+                    [PHAssetChangeRequest creationRequestForAssetFromImage:img];
+                } completionHandler:nil];
+            }
+        })];
+        imgVC.navigationItem.rightBarButtonItem = saveBtn;
+
+        UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:imgVC];
+        [window.rootViewController presentViewController:nav animated:YES completion:nil];
+    }
 }
 
 @end
@@ -168,7 +210,6 @@
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
             UIWindow *window = [UIApplication sharedApplication].keyWindow;
 
-            // زر عائم
             UIButton *floatingButton = [UIButton buttonWithType:UIButtonTypeSystem];
             floatingButton.frame = CGRectMake(window.bounds.size.width - 80, window.bounds.size.height - 150, 60, 60);
             floatingButton.layer.cornerRadius = 30;
