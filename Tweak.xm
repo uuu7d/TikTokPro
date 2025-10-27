@@ -30,7 +30,7 @@
 // unique tag for floating button per window
 + (UIButton *)__sg_floatingButtonForWindow:(UIWindow *)window {
     if (!window) return nil;
-    return (UIButton *)[window viewWithTag:0xFA5G0001]; // unique tag
+    return (UIButton *)[window viewWithTag:0xFA50xFA500001001]; // unique tag
 }
 
 + (void)__sg_addFloatingButtonToWindow:(UIWindow *)window {
@@ -41,7 +41,7 @@
         // create button
         UIButton *btn = [UIButton buttonWithType:UIButtonTypeSystem];
         [btn setTitle:@"⬇️" forState:UIControlStateNormal];
-        btn.tag = 0xFA5G0001;
+        btn.tag = 0xFA50xFA500001001;
         btn.tintColor = [UIColor whiteColor];
         btn.backgroundColor = [[UIColor blackColor] colorWithAlphaComponent:0.45];
         btn.layer.cornerRadius = 28;
@@ -454,10 +454,10 @@
         UIWindow *w = UIApplication.sharedApplication.keyWindow;
         if (!w) return;
         // find or create hud label
-        UILabel *hud = (UILabel *)[w viewWithTag:0xFA5G0002];
+        UILabel *hud = (UILabel *)[w viewWithTag:0xFA50xFA500002002];
         if (!hud) {
             hud = [[UILabel alloc] initWithFrame:CGRectZero];
-            hud.tag = 0xFA5G0002;
+            hud.tag = 0xFA50xFA500002002;
             hud.backgroundColor = [[UIColor blackColor] colorWithAlphaComponent:0.78];
             hud.textColor = [UIColor whiteColor];
             hud.textAlignment = NSTextAlignmentCenter;
