@@ -4,6 +4,7 @@
 
 @interface UIView (SaveGram)
 - (void)__sg_addFloatingButton;
+- (void)__sg_removeFloatingButton;
 - (void)__sg_handleFloatingButtonTap:(UIButton *)btn;
 - (void)__sg_saveImageToPhotos:(UIImage *)image username:(NSString *)username;
 - (void)__sg_saveVideoToPhotos:(NSURL *)videoURL username:(NSString *)username;
@@ -37,6 +38,20 @@
     [window addSubview:btn];
 }
 
+#pragma mark - إزالة الزر بعد الحفظ
+- (void)__sg_removeFloatingButton {
+    UIWindow *window = UIApplication.sharedApplication.keyWindow;
+    if (!window) return;
+    UIView *btn = [window viewWithTag:0xFA500001];
+    if (btn) {
+        [UIView animateWithDuration:0.3 animations:^{
+            btn.alpha = 0.0;
+        } completion:^(BOOL finished) {
+            [btn removeFromSuperview];
+        }];
+    }
+}
+
 #pragma mark - عند الضغط على الزر العائم
 - (void)__sg_handleFloatingButtonTap:(UIButton *)btn {
     if (!btn || ![btn isKindOfClass:[UIButton class]]) return;
@@ -68,7 +83,7 @@
             }
         }
 
-        // محاولة إيجاد اسم المستخدم في النصوص
+        // محاولة إيجاد اسم المستخدم
         for (UIView *sub in visibleView.subviews) {
             if ([sub isKindOfClass:[UILabel class]]) {
                 UILabel *lbl = (UILabel *)sub;
@@ -81,8 +96,10 @@
 
         if (targetImageView) {
             [self __sg_saveImageToPhotos:targetImageView.image username:username];
+            [self __sg_removeFloatingButton];
         } else if (videoURL) {
             [self __sg_saveVideoToPhotos:videoURL username:username];
+            [self __sg_removeFloatingButton];
         } else {
             [self __sg_showAlertWithTitle:@"SaveGram" message:@"❌ لم يتم العثور على وسائط مرئية."];
         }
@@ -111,7 +128,7 @@
     } completionHandler:^(BOOL success, NSError * _Nullable error) {
         dispatch_async(dispatch_get_main_queue(), ^{
             if (success) {
-                [self __sg_showHUD:[NSString stringWithFormat:@"✅ تم حفظ الصورة: %@", filename]];
+                [self __sg_showHUD:[NSString stringWithFormat:@"✅ تم حفظ الصورة: %@", username]];
             } else {
                 [self __sg_showAlertWithTitle:@"SaveGram" message:[NSString stringWithFormat:@"❌ فشل في حفظ الصورة: %@", error.localizedDescription]];
             }
@@ -133,7 +150,7 @@
     } completionHandler:^(BOOL success, NSError * _Nullable error) {
         dispatch_async(dispatch_get_main_queue(), ^{
             if (success) {
-                [self __sg_showHUD:@"✅ تم حفظ الفيديو بنجاح!"];
+                [self __sg_showHUD:[NSString stringWithFormat:@"✅ تم حفظ الفيديو: %@", username]];
             } else {
                 [self __sg_showAlertWithTitle:@"SaveGram" message:[NSString stringWithFormat:@"❌ فشل في حفظ الفيديو: %@", error.localizedDescription]];
             }
@@ -190,7 +207,7 @@
 
 @end
 
-#pragma mark - Hook رئيسي مع حماية كاملة من الكراش
+#pragma mark - Hook رئيسي مع الإخفاء الذكي للزر
 %hook UIView
 
 - (void)didMoveToWindow {
@@ -212,11 +229,16 @@
     }
 
     if (hasMedia) {
-        @try {
-            [self __sg_addFloatingButton];
-        } @catch (NSException *e) {
-            NSLog(@"[SaveGram] Exception while adding ⬇️ button: %@", e.reason);
-        }
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            @try {
+                [self __sg_addFloatingButton];
+            } @catch (NSException *e) {
+                NSLog(@"[SaveGram] Exception while adding ⬇️ button: %@", e.reason);
+            }
+        });
+    } else {
+        // لو الشاشة الجديدة بدون وسائط نخفي الزر
+        [self __sg_removeFloatingButton];
     }
 }
 
