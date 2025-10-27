@@ -14,8 +14,8 @@ FileSaverTweak_PRIVATE_FRAMEWORKS = AppSupport
 FileSaverTweak_CFLAGS = -fobjc-arc
 FileSaverTweak_PRIVATE_FRAMEWORKS = CydiaSubstrate
 FileSaverTweak_LDFLAGS += -framework AVFoundation -framework Photos -framework UIKit
-FileSaverTweak_FILES = Tweak.xm MBProgressHUD.m
-FileSaverTweak_FRAMEWORKS = UIKit Foundation Photos AVFoundation AVKit
+SaveGram_FILES = Tweak.xm MBProgressHUD.m
+SaveGram_FRAMEWORKS = UIKit Foundation Photos AVFoundation AVKit
 include $(THEOS_MAKE_PATH)/tweak.mk
 
 after-install::
