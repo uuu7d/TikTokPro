@@ -105,19 +105,55 @@
 
 %new
 - (void)__sg_saveVideoToPhotos:(NSURL *)videoURL {
-    [self __sg_showHUD:@"Saving video..."];
+    if (!videoURL) {
+        [self __sg_showAlertWithTitle:@"SaveGram" message:@"Invalid video URL."];
+        return;
+    }
+
+    [self __sg_showHUD:@"Preparing video..."];
+
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
+        NSURL *localURL = videoURL;
+
+        // ✅ إذا لم يكن المسار محلي (file://) نحاول نسخه إلى ملف مؤقت
+        if (![videoURL isFileURL]) {
+            NSData *videoData = [NSData dataWithContentsOfURL:videoURL];
+            if (!videoData) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    [self __sg_showHUD:@"❌ Failed to load video data."];
+                });
+                return;
+            }
+
+            NSString *tempPath = [NSTemporaryDirectory() stringByAppendingPathComponent:@"savegram_temp.mp4"];
+            [videoData writeToFile:tempPath atomically:YES];
+            localURL = [NSURL fileURLWithPath:tempPath];
+        }
+
+        // ✅ تحقق أن الملف موجود فعلاً
+        if (![[NSFileManager defaultManager] fileExistsAtPath:localURL.path]) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [self __sg_showHUD:@"❌ Video file missing."];
+            });
+            return;
+        }
+
+        // ✅ الآن نحفظه في الألبوم
         [[PHPhotoLibrary sharedPhotoLibrary] performChanges:^{
-            [PHAssetChangeRequest creationRequestForAssetFromVideoAtFileURL:videoURL];
+            [PHAssetChangeRequest creationRequestForAssetFromVideoAtFileURL:localURL];
         } completionHandler:^(BOOL success, NSError * _Nullable error) {
             dispatch_async(dispatch_get_main_queue(), ^{
-                [self __sg_showHUD:(success ? @"✅ Video Saved!" : @"❌ Failed to save video.")];
-NSLog(@"[SaveGram] videoURL: %@", videoURL);
-NSLog(@"[SaveGram] isFileURL: %d", [videoURL isFileURL]);
+                if (success) {
+                    [self __sg_showHUD:@"✅ Video Saved!"];
+                } else {
+                    NSString *msg = error ? error.localizedDescription : @"❌ Failed to save video.";
+                    [self __sg_showAlertWithTitle:@"SaveGram" message:msg];
+                }
             });
         }];
     });
 }
+
 
 %new
 - (void)__sg_showHUD:(NSString *)message {
