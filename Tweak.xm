@@ -1,187 +1,194 @@
 #import <UIKit/UIKit.h>
-#import <Photos/Photos.h>
 #import <AVFoundation/AVFoundation.h>
-#import <AVKit/AVKit.h>
-
-#pragma mark - Category Declaration
-
-@interface UIView (SaveGram)
-- (void)__sg_addDownloadButton;
-- (void)__sg_downloadMedia;
-- (void)__sg_saveImageToPhotos:(UIImage *)image;
-- (void)__sg_saveVideoToPhotos:(NSURL *)videoURL;
-- (void)__sg_showHUD:(NSString *)message;
-- (void)__sg_showAlertWithTitle:(NSString *)title message:(NSString *)message;
-@end
-
-
-#pragma mark - Hook UIView
+#import <Photos/Photos.h>
 
 %hook UIView
 
-- (void)didMoveToWindow {
-    %orig;
-
-    // ✅ تحقق من إصدار iOS قبل إضافة الزر
-    if (@available(iOS 13.0, *)) {
-        if ([self isKindOfClass:[UIImageView class]] || [self.layer isKindOfClass:[AVPlayerLayer class]]) {
-            [self __sg_addDownloadButton];
-        }
-    }
-}
-
+// ⬇️ دالة عرض زر التحميل
 %new
 - (void)__sg_addDownloadButton {
-    if ([self viewWithTag:99999]) return; // لا تكرر الزر
-
     UIButton *downloadButton = [UIButton buttonWithType:UIButtonTypeSystem];
     [downloadButton setTitle:@"⬇️" forState:UIControlStateNormal];
-    downloadButton.frame = CGRectMake(self.bounds.size.width - 40, 5, 35, 35);
-    downloadButton.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin | UIViewAutoresizingFlexibleBottomMargin;
-    downloadButton.tag = 99999;
+    downloadButton.frame = CGRectMake(self.bounds.size.width - 50, 10, 40, 40);
+    downloadButton.tintColor = [UIColor whiteColor];
+    downloadButton.layer.shadowColor = [UIColor blackColor].CGColor;
+    downloadButton.layer.shadowOpacity = 0.3;
+    downloadButton.layer.shadowOffset = CGSizeMake(1, 1);
+    downloadButton.layer.shadowRadius = 2;
+    downloadButton.tag = 9999;
+    [downloadButton addTarget:self action:@selector(__sg_handleDownloadTap) forControlEvents:UIControlEventTouchUpInside];
 
-    downloadButton.backgroundColor = [[UIColor blackColor] colorWithAlphaComponent:0.5];
-    [downloadButton setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
-    downloadButton.layer.cornerRadius = 8;
-    downloadButton.clipsToBounds = YES;
-
-    [downloadButton addTarget:self action:@selector(__sg_downloadMedia) forControlEvents:UIControlEventTouchUpInside];
-
-    [self addSubview:downloadButton];
-    self.userInteractionEnabled = YES;
-}
-
-%new
-- (void)__sg_downloadMedia {
-    UIImage *image = nil;
-    NSURL *videoURL = nil;
-
-    if ([self isKindOfClass:[UIImageView class]]) {
-        image = ((UIImageView *)self).image;
-    } else if ([self.layer isKindOfClass:[AVPlayerLayer class]]) {
-        AVPlayerLayer *playerLayer = (AVPlayerLayer *)self.layer;
-        AVPlayerItem *item = playerLayer.player.currentItem;
-        if (item && [item.asset isKindOfClass:[AVURLAsset class]]) {
-            videoURL = ((AVURLAsset *)item.asset).URL;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (![self viewWithTag:9999]) {
+            [self addSubview:downloadButton];
         }
-    }
-
-    if (!image && !videoURL) {
-        [self __sg_showAlertWithTitle:@"SaveGram" message:@"No media detected."];
-        return;
-    }
-
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"SaveGram"
-                                                                   message:@"Save this media to Photos?"
-                                                            preferredStyle:UIAlertControllerStyleActionSheet];
-    [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
-    [alert addAction:[UIAlertAction actionWithTitle:@"Save" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
-        if (image) {
-            [self __sg_saveImageToPhotos:image];
-        } else if (videoURL) {
-            [self __sg_saveVideoToPhotos:videoURL];
-        }
-    }]];
-
-    UIWindow *keyWindow = [UIApplication sharedApplication].keyWindow;
-    UIViewController *topVC = keyWindow.rootViewController;
-    while (topVC.presentedViewController) topVC = topVC.presentedViewController;
-    [topVC presentViewController:alert animated:YES completion:nil];
-}
-
-%new
-- (void)__sg_saveImageToPhotos:(UIImage *)image {
-    [self __sg_showHUD:@"Saving image..."];
-    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
-        [[PHPhotoLibrary sharedPhotoLibrary] performChanges:^{
-            [PHAssetChangeRequest creationRequestForAssetFromImage:image];
-        } completionHandler:^(BOOL success, NSError * _Nullable error) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                [self __sg_showHUD:(success ? @"✅ Image Saved!" : @"❌ Failed to save image.")];
-            });
-        }];
     });
 }
 
+// ⬇️ حدث الضغط على الزر
 %new
-- (void)__sg_saveVideoToPhotos:(NSURL *)videoURL {
-    if (!videoURL) {
-        [self __sg_showAlertWithTitle:@"SaveGram" message:@"Invalid video URL."];
-        return;
+- (void)__sg_handleDownloadTap {
+    NSLog(@"[SaveGram] Download button tapped");
+    
+    // نحاول إيجاد الفيديو أو الصورة في الـ subviews
+    UIImageView *imageView = nil;
+    AVPlayerLayer *playerLayer = nil;
+
+    for (UIView *sub in self.subviews) {
+        if ([sub isKindOfClass:[UIImageView class]]) {
+            imageView = (UIImageView *)sub;
+        } else if ([sub.layer isKindOfClass:[AVPlayerLayer class]]) {
+            playerLayer = (AVPlayerLayer *)sub.layer;
+        }
     }
 
+    if (imageView.image) {
+        [self __sg_saveImageToPhotos:imageView.image];
+    } else if (playerLayer.player.currentItem) {
+        AVPlayerItem *item = playerLayer.player.currentItem;
+        AVAsset *asset = item.asset;
+
+        if ([asset isKindOfClass:[AVURLAsset class]]) {
+            NSURL *url = [(AVURLAsset *)asset URL];
+            [self __sg_saveVideoToPhotos:url];
+        } else {
+            [self __sg_saveVideoToPhotos:nil];
+        }
+    } else {
+        [self __sg_showAlertWithTitle:@"SaveGram" message:@"No media detected."];
+    }
+}
+
+// ⬇️ حفظ الصورة
+%new
+- (void)__sg_saveImageToPhotos:(UIImage *)image {
+    [self __sg_showHUD:@"Saving image..."];
+    UIImageWriteToSavedPhotosAlbum(image, self, @selector(__sg_image:didFinishSavingWithError:contextInfo:), NULL);
+}
+
+%new
+- (void)__sg_image:(UIImage *)image didFinishSavingWithError:(NSError *)error contextInfo:(void *)contextInfo {
+    [self __sg_showHUD:(error ? @"❌ Failed to save image." : @"✅ Image Saved!")];
+}
+
+// ⬇️ حفظ الفيديو (الإصدار الذكي مع اسم المستخدم)
+%new
+- (void)__sg_saveVideoToPhotos:(NSURL *)videoURL {
     [self __sg_showHUD:@"Preparing video..."];
 
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
-        NSURL *localURL = videoURL;
+        AVAsset *asset = nil;
 
-        // ✅ إذا لم يكن المسار محلي (file://) نحاول نسخه إلى ملف مؤقت
-        if (![videoURL isFileURL]) {
+        if (videoURL && [videoURL isFileURL]) {
+            asset = [AVAsset assetWithURL:videoURL];
+        } else if (videoURL) {
             NSData *videoData = [NSData dataWithContentsOfURL:videoURL];
-            if (!videoData) {
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    [self __sg_showHUD:@"❌ Failed to load video data."];
-                });
-                return;
+            if (videoData) {
+                NSString *tempPath = [NSTemporaryDirectory() stringByAppendingPathComponent:@"savegram_temp.mp4"];
+                [videoData writeToFile:tempPath atomically:YES];
+                asset = [AVAsset assetWithURL:[NSURL fileURLWithPath:tempPath]];
             }
-
-            NSString *tempPath = [NSTemporaryDirectory() stringByAppendingPathComponent:@"savegram_temp.mp4"];
-            [videoData writeToFile:tempPath atomically:YES];
-            localURL = [NSURL fileURLWithPath:tempPath];
+        } else if ([self.layer isKindOfClass:[AVPlayerLayer class]]) {
+            AVPlayerLayer *playerLayer = (AVPlayerLayer *)self.layer;
+            if (playerLayer.player.currentItem) asset = playerLayer.player.currentItem.asset;
         }
 
-        // ✅ تحقق أن الملف موجود فعلاً
-        if (![[NSFileManager defaultManager] fileExistsAtPath:localURL.path]) {
+        if (!asset) {
             dispatch_async(dispatch_get_main_queue(), ^{
-                [self __sg_showHUD:@"❌ Video file missing."];
+                [self __sg_showHUD:@"❌ No video asset found."];
             });
             return;
         }
 
-        // ✅ الآن نحفظه في الألبوم
-        [[PHPhotoLibrary sharedPhotoLibrary] performChanges:^{
-            [PHAssetChangeRequest creationRequestForAssetFromVideoAtFileURL:localURL];
-        } completionHandler:^(BOOL success, NSError * _Nullable error) {
+        // 🔤 نحاول تحديد اسم المستخدم
+        NSString *username = nil;
+
+        UIResponder *responder = self;
+        while (responder) {
+            if ([responder respondsToSelector:@selector(username)]) {
+                username = [responder performSelector:@selector(username)];
+                break;
+            }
+            responder = [responder nextResponder];
+        }
+
+        if (!username || username.length == 0) {
+            NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
+            [formatter setDateFormat:@"yyyyMMdd_HHmmss"];
+            username = [NSString stringWithFormat:@"user_%@", [formatter stringFromDate:[NSDate date]]];
+        }
+
+        NSString *filename = [NSString stringWithFormat:@"%@.mp4", username];
+        NSString *outputPath = [NSTemporaryDirectory() stringByAppendingPathComponent:filename];
+        NSURL *outputURL = [NSURL fileURLWithPath:outputPath];
+
+        if ([[NSFileManager defaultManager] fileExistsAtPath:outputPath]) {
+            [[NSFileManager defaultManager] removeItemAtPath:outputPath error:nil];
+        }
+
+        AVAssetExportSession *exportSession = [[AVAssetExportSession alloc] initWithAsset:asset presetName:AVAssetExportPresetHighestQuality];
+        exportSession.outputURL = outputURL;
+        exportSession.outputFileType = AVFileTypeMPEG4;
+
+        [exportSession exportAsynchronouslyWithCompletionHandler:^{
             dispatch_async(dispatch_get_main_queue(), ^{
-                if (success) {
-                    [self __sg_showHUD:@"✅ Video Saved!"];
+                if (exportSession.status == AVAssetExportSessionStatusCompleted) {
+                    [[PHPhotoLibrary sharedPhotoLibrary] performChanges:^{
+                        [PHAssetChangeRequest creationRequestForAssetFromVideoAtFileURL:outputURL];
+                    } completionHandler:^(BOOL success, NSError * _Nullable error) {
+                        dispatch_async(dispatch_get_main_queue(), ^{
+                            if (success) {
+                                [self __sg_showHUD:[NSString stringWithFormat:@"✅ Saved as %@", filename]];
+                            } else {
+                                NSString *msg = error ? error.localizedDescription : @"❌ Failed to save video.";
+                                [self __sg_showAlertWithTitle:@"SaveGram" message:msg];
+                            }
+                        });
+                    }];
                 } else {
-                    NSString *msg = error ? error.localizedDescription : @"❌ Failed to save video.";
-                    [self __sg_showAlertWithTitle:@"SaveGram" message:msg];
+                    NSString *errorMsg = exportSession.error.localizedDescription ?: @"Export failed.";
+                    [self __sg_showAlertWithTitle:@"SaveGram" message:[NSString stringWithFormat:@"❌ %@", errorMsg]];
                 }
             });
         }];
     });
 }
 
-
+// ⬇️ تنبيهات وHUD
 %new
-- (void)__sg_showHUD:(NSString *)message {
-    UIWindow *keyWindow = [UIApplication sharedApplication].keyWindow;
-    UILabel *hud = [[UILabel alloc] initWithFrame:CGRectMake(0, 0, 200, 40)];
-    hud.center = keyWindow.center;
-    hud.backgroundColor = [[UIColor blackColor] colorWithAlphaComponent:0.7];
-    hud.textColor = [UIColor whiteColor];
-    hud.textAlignment = NSTextAlignmentCenter;
-    hud.text = message;
-    hud.layer.cornerRadius = 10;
-    hud.clipsToBounds = YES;
+- (void)__sg_showHUD:(NSString *)text {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        UILabel *hud = [self viewWithTag:7777];
+        if (!hud) {
+            hud = [[UILabel alloc] initWithFrame:CGRectMake(20, self.bounds.size.height - 80, self.bounds.size.width - 40, 40)];
+            hud.backgroundColor = [[UIColor blackColor] colorWithAlphaComponent:0.7];
+            hud.textColor = [UIColor whiteColor];
+            hud.textAlignment = NSTextAlignmentCenter;
+            hud.layer.cornerRadius = 8;
+            hud.clipsToBounds = YES;
+            hud.tag = 7777;
+            [self addSubview:hud];
+        }
+        hud.text = text;
+        hud.alpha = 1.0;
 
-    [keyWindow addSubview:hud];
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        [hud removeFromSuperview];
+        [UIView animateWithDuration:0.5 delay:2.0 options:0 animations:^{
+            hud.alpha = 0.0;
+        } completion:nil];
     });
 }
 
 %new
 - (void)__sg_showAlertWithTitle:(NSString *)title message:(NSString *)message {
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:title message:message preferredStyle:UIAlertControllerStyleAlert];
-    [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
-
-    UIWindow *keyWindow = [UIApplication sharedApplication].keyWindow;
-    UIViewController *topVC = keyWindow.rootViewController;
-    while (topVC.presentedViewController) topVC = topVC.presentedViewController;
-    [topVC presentViewController:alert animated:YES completion:nil];
+    dispatch_async(dispatch_get_main_queue(), ^{
+        UIAlertController *alert = [UIAlertController alertControllerWithTitle:title
+                                                                       message:message
+                                                                preferredStyle:UIAlertControllerStyleAlert];
+        UIAlertAction *ok = [UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil];
+        [alert addAction:ok];
+        UIViewController *root = UIApplication.sharedApplication.keyWindow.rootViewController;
+        [root presentViewController:alert animated:YES completion:nil];
+    });
 }
 
 %end
