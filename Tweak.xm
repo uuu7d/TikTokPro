@@ -1,5 +1,6 @@
 #import <UIKit/UIKit.h>
 #import <AVFoundation/AVFoundation.h>
+#import <AVKit/AVKit.h>
 #import <Photos/Photos.h>
 
 @interface UIView (FileSaverTweak)
@@ -9,30 +10,25 @@
 
 @implementation UIView (FileSaverTweak)
 
-// ✅ دالة عرض تنبيهات ثابتة لتجنب crash
+// عرض تنبيه ثابت
 + (void)sg_showAlertStatic:(NSString *)title message:(NSString *)message {
     dispatch_async(dispatch_get_main_queue(), ^{
         UIAlertController *alert = [UIAlertController alertControllerWithTitle:title
                                                                        message:message
                                                                 preferredStyle:UIAlertControllerStyleAlert];
-        UIAlertAction *ok = [UIAlertAction actionWithTitle:@"موافق" style:UIAlertActionStyleDefault handler:nil];
+        UIAlertAction *ok = [UIAlertAction actionWithTitle:@"موافق"
+                                                     style:UIAlertActionStyleDefault
+                                                   handler:nil];
         [alert addAction:ok];
         UIWindow *keyWindow = UIApplication.sharedApplication.keyWindow;
         [keyWindow.rootViewController presentViewController:alert animated:YES completion:nil];
     });
 }
 
-// ✅ دالة رئيسية عند الضغط على الزر ⬇️
+// عند الضغط على زر التحميل ⬇️
 - (void)__sg_handleFloatingButtonTap:(UIButton *)btn {
-    UIView *targetView = UIApplication.sharedApplication.keyWindow.rootViewController.view;
-    if (!targetView) {
-        [UIView sg_showAlertStatic:@"خطأ" message:@"تعذر العثور على المحتوى"];
-        return;
-    }
-
-    // عرض قائمة الخيارات
     UIAlertController *menu = [UIAlertController alertControllerWithTitle:@"خيارات التحميل"
-                                                                  message:@"اختر نوع المحتوى للحفظ"
+                                                                  message:@"اختر ما تريد حفظه"
                                                            preferredStyle:UIAlertControllerStyleActionSheet];
 
     UIAlertAction *saveImage = [UIAlertAction actionWithTitle:@"📸 حفظ الصورة"
@@ -59,11 +55,12 @@
     [window.rootViewController presentViewController:menu animated:YES completion:nil];
 }
 
-// ✅ حفظ الصور المعروضة
+// حفظ الصور
 - (void)sg_saveVisibleImage {
     __block UIImage *targetImage = nil;
 
-    for (UIView *subview in UIApplication.sharedApplication.keyWindow.rootViewController.view.subviews) {
+    // البحث في كل UIImageView في النافذة الحالية
+    for (UIView *subview in UIApplication.sharedApplication.keyWindow.subviews) {
         if ([subview isKindOfClass:[UIImageView class]]) {
             UIImageView *imgView = (UIImageView *)subview;
             if (imgView.image) {
@@ -88,17 +85,31 @@
     }];
 }
 
-// ✅ حفظ الفيديوهات المعروضة
+// حفظ الفيديوهات من AVPlayerLayer أو AVPlayerViewController
 - (void)sg_saveVisibleVideo {
     __block NSURL *videoURL = nil;
 
-    for (UIView *subview in UIApplication.sharedApplication.keyWindow.rootViewController.view.subviews) {
-        if ([subview isKindOfClass:NSClassFromString(@"AVPlayerView")]) {
-            AVPlayerView *playerView = (AVPlayerView *)subview;
-            AVPlayerItem *item = playerView.player.currentItem;
+    // أولاً نحاول استخراج الفيديو من AVPlayerViewController إن وُجد
+    for (UIWindow *window in UIApplication.sharedApplication.windows) {
+        UIViewController *rootVC = window.rootViewController;
+        if ([rootVC isKindOfClass:[AVPlayerViewController class]]) {
+            AVPlayerViewController *pvc = (AVPlayerViewController *)rootVC;
+            AVPlayerItem *item = pvc.player.currentItem;
             if ([item.asset isKindOfClass:[AVURLAsset class]]) {
                 videoURL = ((AVURLAsset *)item.asset).URL;
                 break;
+            }
+        }
+
+        // ثانيًا من الـ AVPlayerLayer إن وُجد داخل أي UIView
+        for (UIView *view in window.subviews) {
+            if ([view.layer isKindOfClass:[AVPlayerLayer class]]) {
+                AVPlayerLayer *playerLayer = (AVPlayerLayer *)view.layer;
+                AVPlayerItem *item = playerLayer.player.currentItem;
+                if ([item.asset isKindOfClass:[AVURLAsset class]]) {
+                    videoURL = ((AVURLAsset *)item.asset).URL;
+                    break;
+                }
             }
         }
     }
@@ -120,7 +131,7 @@
 
 @end
 
-// ✅ زر التحميل ⬇️
+// زر التحميل ⬇️ يظهر بشكل دائم وآمن
 %hook UIViewController
 
 - (void)viewDidAppear:(BOOL)animated {
@@ -139,6 +150,7 @@
         downloadButton.backgroundColor = [[UIColor blackColor] colorWithAlphaComponent:0.5];
         [downloadButton setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
         [downloadButton addTarget:self.view action:@selector(__sg_handleFloatingButtonTap:) forControlEvents:UIControlEventTouchUpInside];
+        downloadButton.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin | UIViewAutoresizingFlexibleTopMargin;
         [window addSubview:downloadButton];
     }
 }
