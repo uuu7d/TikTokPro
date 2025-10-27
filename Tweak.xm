@@ -1,99 +1,173 @@
 #import <UIKit/UIKit.h>
 #import <AVFoundation/AVFoundation.h>
-#import <objc/runtime.h>
-#import <Foundation/Foundation.h>
-#import <AudioToolbox/AudioToolbox.h>
+#import <Photos/Photos.h>
+#import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
-// مساعدة للحصول على root view controller بشكل آمن لكل iOS
-UIViewController *getRootViewController() {
-    UIWindow *keyWindow = nil;
-    if (@available(iOS 13.0, *)) {
-        for (UIWindowScene *scene in [UIApplication sharedApplication].connectedScenes) {
-            if (scene.activationState == UISceneActivationStateForegroundActive) {
-                keyWindow = scene.windows.firstObject;
-                break;
-            }
-        }
-    } else {
-        keyWindow = [UIApplication sharedApplication].keyWindow;
+@interface CustomPopupView : UIView
+@property (nonatomic, strong) UIVisualEffectView *blurView;
+@property (nonatomic, strong) AVAudioPlayer *audioPlayer;
+@end
+
+@implementation CustomPopupView
+
+- (instancetype)initWithFrame:(CGRect)frame {
+    self = [super initWithFrame:frame];
+    if (self) {
+        [self setupBlurBackground];
+        [self setupButtons];
     }
-    return keyWindow.rootViewController;
+    return self;
 }
 
-// فتح روابط خارجية
-void openURL(NSString *urlString) {
-    NSURL *url = [NSURL URLWithString:urlString];
-    if ([[UIApplication sharedApplication] canOpenURL:url]) {
+- (void)setupBlurBackground {
+    UIBlurEffect *blurEffect = [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemMaterialDark];
+    self.blurView = [[UIVisualEffectView alloc] initWithEffect:blurEffect];
+    self.blurView.frame = self.bounds;
+    self.blurView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    [self addSubview:self.blurView];
+}
+
+- (void)setupButtons {
+    NSArray *titles = @[@"تيليجرام", @"سناب شات", @"🧹 تنظيف الكاش", @"🔁 إعادة التشغيل", @"💾 حفظ المحتوى المرئي"];
+    SEL actions[] = {@selector(openTelegram), @selector(openSnapchat), @selector(cleanCache), @selector(restartApp), @selector(saveMedia)};
+
+    CGFloat buttonWidth = self.frame.size.width - 60;
+    CGFloat buttonHeight = 50;
+    CGFloat startY = 150;
+
+    for (int i = 0; i < titles.count; i++) {
+        UIButton *button = [UIButton buttonWithType:UIButtonTypeSystem];
+        button.frame = CGRectMake(30, startY + (i * 70), buttonWidth, buttonHeight);
+        [button setTitle:titles[i] forState:UIControlStateNormal];
+        [button setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
+        button.backgroundColor = [[UIColor systemBlueColor] colorWithAlphaComponent:0.25];
+        button.layer.cornerRadius = 12.0;
+        button.clipsToBounds = YES;
+        [button addTarget:self action:actions[i] forControlEvents:UIControlEventTouchUpInside];
+        [self.blurView.contentView addSubview:button];
+    }
+}
+
+#pragma mark - Actions
+
+- (void)playClickSound {
+    NSString *path = [[NSBundle mainBundle] pathForResource:@"click" ofType:@"wav"];
+    if (!path) return;
+    NSURL *url = [NSURL fileURLWithPath:path];
+    self.audioPlayer = [[AVAudioPlayer alloc] initWithContentsOfURL:url error:nil];
+    [self.audioPlayer play];
+}
+
+- (void)openTelegram {
+    [self playClickSound];
+    NSURL *url = [NSURL URLWithString:@"tg://resolve?domain=yourTelegramUsername"];
+    if ([[UIApplication sharedApplication] canOpenURL:url])
         [[UIApplication sharedApplication] openURL:url options:@{} completionHandler:nil];
-    }
 }
 
-// عرض alert ترحيبي
-void showWelcomeAlert() {
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"مرحبا!" 
-                                                                   message:@"أهلاً بك في التطبيق" 
-                                                            preferredStyle:UIAlertControllerStyleAlert];
+- (void)openSnapchat {
+    [self playClickSound];
+    NSURL *url = [NSURL URLWithString:@"https://www.snapchat.com/add/yourSnapUsername"];
+    if ([[UIApplication sharedApplication] canOpenURL:url])
+        [[UIApplication sharedApplication] openURL:url options:@{} completionHandler:nil];
+}
 
-    UIAlertAction *telegram = [UIAlertAction actionWithTitle:@"فتح تيليجرام" 
-                                                       style:UIAlertActionStyleDefault 
-                                                     handler:^(UIAlertAction * _Nonnull action) {
-        AudioServicesPlaySystemSound(1104); // صوت نقر
-        openURL(@"tg://resolve?domain=YourTelegramID");
-    }];
-    UIAlertAction *snapchat = [UIAlertAction actionWithTitle:@"فتح سناب شات" 
-                                                       style:UIAlertActionStyleDefault 
-                                                     handler:^(UIAlertAction * _Nonnull action) {
-        AudioServicesPlaySystemSound(1104);
-        openURL(@"snapchat://add/YourSnapchatID");
-    }];
-    UIAlertAction *restartApp = [UIAlertAction actionWithTitle:@"إعادة تشغيل التطبيق" 
-                                                         style:UIAlertActionStyleDestructive 
-                                                       handler:^(UIAlertAction * _Nonnull action) {
-        AudioServicesPlaySystemSound(1104);
-        exit(0);
-    }];
+- (void)cleanCache {
+    [self playClickSound];
+    NSString *appPath = NSHomeDirectory();
+    NSString *cachePath = [appPath stringByAppendingPathComponent:@"Library/Caches"];
+    NSArray *files = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:cachePath error:nil];
 
-    [alert addAction:telegram];
-    [alert addAction:snapchat];
-    [alert addAction:restartApp];
+    unsigned long long totalSize = 0;
+    for (NSString *file in files) {
+        NSString *filePath = [cachePath stringByAppendingPathComponent:file];
+        NSDictionary *attrs = [[NSFileManager defaultManager] attributesOfItemAtPath:filePath error:nil];
+        totalSize += [attrs fileSize];
+        [[NSFileManager defaultManager] removeItemAtPath:filePath error:nil];
+    }
+
+    double mb = totalSize / (1024.0 * 1024.0);
+    NSString *msg = [NSString stringWithFormat:@"تم حذف %.2f ميغابايت من ملفات الكاش.", mb];
 
     dispatch_async(dispatch_get_main_queue(), ^{
-        UIViewController *rootVC = getRootViewController();
-        if (rootVC) {
-            [rootVC presentViewController:alert animated:YES completion:nil];
-        }
+        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"✅ تم التنظيف"
+                                                                       message:msg
+                                                                preferredStyle:UIAlertControllerStyleAlert];
+        [alert addAction:[UIAlertAction actionWithTitle:@"موافق" style:UIAlertActionStyleDefault handler:nil]];
+        [[UIApplication sharedApplication].keyWindow.rootViewController presentViewController:alert animated:YES completion:nil];
     });
 }
 
-// حفظ الصور والفيديوهات تلقائيًا
-// يمكن تعديل هذا الجزء حسب مكان المحتوى الذي تريد حفظه
-void saveMediaToCameraRoll(UIImage *image, NSURL *videoURL) {
-    if (image) {
-        UIImageWriteToSavedPhotosAlbum(image, nil, nil, nil);
-    }
-    if (videoURL) {
-        UISaveVideoAtPathToSavedPhotosAlbum([videoURL path], nil, nil, nil);
-    }
+- (void)restartApp {
+    [self playClickSound];
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.6 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        exit(0);
+    });
 }
 
-// Hook عند فتح التطبيق
-%hook UIApplication
+- (void)saveMedia {
+    [self playClickSound];
 
-- (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions {
-    %orig;
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"💾 حفظ المحتوى"
+                                                                   message:@"أدخل رابط الصورة أو الفيديو:"
+                                                            preferredStyle:UIAlertControllerStyleAlert];
+    [alert addTextFieldWithConfigurationHandler:^(UITextField * _Nonnull textField) {
+        textField.placeholder = @"https://example.com/media.mp4";
+    }];
 
-    // عرض النافذة الترحيبية
-    showWelcomeAlert();
+    UIAlertAction *download = [UIAlertAction actionWithTitle:@"تنزيل" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+        NSString *urlString = alert.textFields.firstObject.text;
+        NSURL *mediaURL = [NSURL URLWithString:urlString];
+        if (!mediaURL) return;
 
-    return YES;
+        NSURLSessionDownloadTask *task = [[NSURLSession sharedSession] downloadTaskWithURL:mediaURL completionHandler:^(NSURL *location, NSURLResponse *response, NSError *error) {
+            if (error) return;
+
+            NSString *fileExt = response.suggestedFilename.pathExtension.lowercaseString;
+            NSData *data = [NSData dataWithContentsOfURL:location];
+
+            if ([fileExt isEqualToString:@"jpg"] || [fileExt isEqualToString:@"png"]) {
+                UIImage *image = [UIImage imageWithData:data];
+                if (image) {
+                    [[PHPhotoLibrary sharedPhotoLibrary] performChanges:^{
+                        [PHAssetChangeRequest creationRequestForAssetFromImage:image];
+                    } completionHandler:nil];
+                }
+            } else if ([fileExt isEqualToString:@"mp4"] || [fileExt isEqualToString:@"mov"]) {
+                NSURL *destination = [NSURL fileURLWithPath:[NSTemporaryDirectory() stringByAppendingPathComponent:response.suggestedFilename]];
+                [[NSFileManager defaultManager] moveItemAtURL:location toURL:destination error:nil];
+                [[PHPhotoLibrary sharedPhotoLibrary] performChanges:^{
+                    [PHAssetChangeRequest creationRequestForAssetFromVideoAtFileURL:destination];
+                } completionHandler:nil];
+            }
+        }];
+        [task resume];
+    }];
+
+    [alert addAction:download];
+    [alert addAction:[UIAlertAction actionWithTitle:@"إلغاء" style:UIAlertActionStyleCancel handler:nil]];
+
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [[UIApplication sharedApplication].keyWindow.rootViewController presentViewController:alert animated:YES completion:nil];
+    });
 }
 
-%end
+@end
 
-// مثال: Hook على عرض صورة أو فيديو إذا كنت تريد الحفظ التلقائي
-// %hook SomeViewController
-// - (void)displayImage:(UIImage *)image {
-//     %orig;
-//     saveMediaToCameraRoll(image, nil);
-// }
-// %end
+
+%ctor {
+    if (@available(iOS 16.0, *)) {
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            UIWindow *window = [UIApplication sharedApplication].keyWindow;
+            CustomPopupView *popup = [[CustomPopupView alloc] initWithFrame:window.bounds];
+            popup.alpha = 0.0;
+            [window addSubview:popup];
+
+            [UIView animateWithDuration:0.4 animations:^{
+                popup.alpha = 1.0;
+            }];
+        });
+    } else {
+        NSLog(@"❌ هذه الأداة تعمل فقط على iOS 16 وأعلى.");
+    }
+}
