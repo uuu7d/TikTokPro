@@ -10,7 +10,6 @@ on:
 jobs:
   build:
     runs-on: macos-latest
-
     env:
       THEOS: ${{ github.workspace }}/theos
 
@@ -18,22 +17,18 @@ jobs:
       - name: 🔄 Checkout repository
         uses: actions/checkout@v4
 
-      # ⚙️ التخزين المؤقت لتسريع البناء في المرات القادمة
       - name: ⚙️ Cache Theos
         uses: actions/cache@v3
         with:
           path: ${{ github.workspace }}/theos
           key: theos-cache-${{ runner.os }}
 
-      # 🛠️ تثبيت الأدوات اللازمة
       - name: 🛠️ Install dependencies
         run: |
           brew install dpkg ldid make git perl
 
-      # 📦 إعداد Theos و SDK 16.5
-      - name: 📦 Setup Theos and iOS 16.5 SDK
+      - name: 📦 Setup Theos and SDK 16.5
         run: |
-          set -e
           mkdir -p $THEOS
           echo "export THEOS=$THEOS" >> $HOME/.bash_profile
 
@@ -41,35 +36,27 @@ jobs:
             echo "🔽 Cloning Theos..."
             git clone --recursive https://github.com/theos/theos.git $THEOS
           else
-            echo "✅ Theos already exists, skipping clone."
+            echo "✅ Theos exists, skipping."
           fi
 
-          # 🔽 تحميل SDK 16.5 إذا لم يكن موجودًا
+          # تحميل SDK 16.5 إذا لم يكن موجودًا
           if [ ! -d "$THEOS/sdks/iPhoneOS16.5.sdk" ]; then
             echo "🔽 Downloading iOS 16.5 SDK..."
             mkdir -p $THEOS/sdks
             curl -L -o $THEOS/sdks/iPhoneOS16.5.sdk.tar.xz https://github.com/theos/sdks/releases/download/master-146e41f/iPhoneOS16.5.sdk.tar.xz
-            if [ -s "$THEOS/sdks/iPhoneOS16.5.sdk.tar.xz" ]; then
-              tar -xJf $THEOS/sdks/iPhoneOS16.5.sdk.tar.xz -C $THEOS/sdks
-              echo "✅ iOS 16.5 SDK extracted successfully."
-            else
-              echo "❌ Failed to download SDK (empty file)."
-              exit 1
-            fi
+            tar -xJf $THEOS/sdks/iPhoneOS16.5.sdk.tar.xz -C $THEOS/sdks
           else
             echo "✅ iOS 16.5 SDK already exists."
           fi
 
-          echo "✅ Theos and iOS 16.5 SDK are ready."
+          echo "✅ Theos and SDK ready."
 
-      # 🧩 بناء الأداة
       - name: 🧩 Build Tweak
         run: |
           echo "🏗️ Building tweak using Theos..."
           make package FINALPACKAGE=1
           echo "✅ Build completed successfully."
 
-      # 📤 رفع ملف deb الناتج
       - name: 📤 Upload deb package
         uses: actions/upload-artifact@v4
         with:
