@@ -15,6 +15,7 @@
     if (self) {
         [self setupBlurBackground];
         [self setupButtons];
+        [self startObservingMedia];
     }
     return self;
 }
@@ -28,8 +29,8 @@
 }
 
 - (void)setupButtons {
-    NSArray *titles = @[@"تيليجرام", @"سناب شات", @"🧹 تنظيف الكاش", @"🔁 إعادة التشغيل", @"💾 حفظ المحتوى المرئي"];
-    SEL actions[] = {@selector(openTelegram), @selector(openSnapchat), @selector(cleanCache), @selector(restartApp), @selector(saveMedia)};
+    NSArray *titles = @[@"🧹 تنظيف الكاش", @"🔁 إعادة التشغيل", @"❌ إغلاق", @"📂 تصفح الملفات"];
+    SEL actions[] = {@selector(cleanCache), @selector(restartApp), @selector(closePopup), @selector(openSandbox)};
 
     CGFloat buttonWidth = self.frame.size.width - 60;
     CGFloat buttonHeight = 50;
@@ -58,24 +59,9 @@
     [self.audioPlayer play];
 }
 
-- (void)openTelegram {
-    [self playClickSound];
-    NSURL *url = [NSURL URLWithString:@"tg://resolve?domain=yourTelegramUsername"];
-    if ([[UIApplication sharedApplication] canOpenURL:url])
-        [[UIApplication sharedApplication] openURL:url options:@{} completionHandler:nil];
-}
-
-- (void)openSnapchat {
-    [self playClickSound];
-    NSURL *url = [NSURL URLWithString:@"https://www.snapchat.com/add/yourSnapUsername"];
-    if ([[UIApplication sharedApplication] canOpenURL:url])
-        [[UIApplication sharedApplication] openURL:url options:@{} completionHandler:nil];
-}
-
 - (void)cleanCache {
     [self playClickSound];
-    NSString *appPath = NSHomeDirectory();
-    NSString *cachePath = [appPath stringByAppendingPathComponent:@"Library/Caches"];
+    NSString *cachePath = [NSHomeDirectory() stringByAppendingPathComponent:@"Library/Caches"];
     NSArray *files = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:cachePath error:nil];
 
     unsigned long long totalSize = 0;
@@ -105,69 +91,108 @@
     });
 }
 
-- (void)saveMedia {
+- (void)closePopup {
     [self playClickSound];
-
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"💾 حفظ المحتوى"
-                                                                   message:@"أدخل رابط الصورة أو الفيديو:"
-                                                            preferredStyle:UIAlertControllerStyleAlert];
-    [alert addTextFieldWithConfigurationHandler:^(UITextField * _Nonnull textField) {
-        textField.placeholder = @"https://example.com/media.mp4";
+    [UIView animateWithDuration:0.3 animations:^{
+        self.alpha = 0.0;
+    } completion:^(BOOL finished) {
+        [self removeFromSuperview];
     }];
+}
 
-    UIAlertAction *download = [UIAlertAction actionWithTitle:@"تنزيل" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
-        NSString *urlString = alert.textFields.firstObject.text;
-        NSURL *mediaURL = [NSURL URLWithString:urlString];
-        if (!mediaURL) return;
+- (void)openSandbox {
+    [self playClickSound];
+    UIViewController *sandboxVC = [[UIViewController alloc] init];
+    sandboxVC.view.backgroundColor = [UIColor systemBackgroundColor];
+    sandboxVC.title = @"ملفات التطبيق";
 
-        NSURLSessionDownloadTask *task = [[NSURLSession sharedSession] downloadTaskWithURL:mediaURL completionHandler:^(NSURL *location, NSURLResponse *response, NSError *error) {
-            if (error) return;
+    UITextView *textView = [[UITextView alloc] initWithFrame:sandboxVC.view.bounds];
+    textView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    textView.editable = NO;
 
-            NSString *fileExt = response.suggestedFilename.pathExtension.lowercaseString;
-            NSData *data = [NSData dataWithContentsOfURL:location];
+    NSString *homePath = NSHomeDirectory();
+    NSArray *files = [[NSFileManager defaultManager] subpathsAtPath:homePath];
+    textView.text = [files componentsJoinedByString:@"\n"];
 
-            if ([fileExt isEqualToString:@"jpg"] || [fileExt isEqualToString:@"png"]) {
-                UIImage *image = [UIImage imageWithData:data];
-                if (image) {
-                    [[PHPhotoLibrary sharedPhotoLibrary] performChanges:^{
-                        [PHAssetChangeRequest creationRequestForAssetFromImage:image];
-                    } completionHandler:nil];
-                }
-            } else if ([fileExt isEqualToString:@"mp4"] || [fileExt isEqualToString:@"mov"]) {
-                NSURL *destination = [NSURL fileURLWithPath:[NSTemporaryDirectory() stringByAppendingPathComponent:response.suggestedFilename]];
-                [[NSFileManager defaultManager] moveItemAtURL:location toURL:destination error:nil];
-                [[PHPhotoLibrary sharedPhotoLibrary] performChanges:^{
-                    [PHAssetChangeRequest creationRequestForAssetFromVideoAtFileURL:destination];
-                } completionHandler:nil];
-            }
-        }];
-        [task resume];
+    [sandboxVC.view addSubview:textView];
+
+    UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:sandboxVC];
+    [[UIApplication sharedApplication].keyWindow.rootViewController presentViewController:nav animated:YES completion:nil];
+}
+
+#pragma mark - Auto Save Media
+
+- (void)startObservingMedia {
+    // مراقبة عرض الفيديوهات والصور
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(handleAVPlayerStart:)
+                                                 name:AVPlayerItemNewAccessLogEntryNotification
+                                               object:nil];
+}
+
+- (void)handleAVPlayerStart:(NSNotification *)notification {
+    AVPlayerItem *item = notification.object;
+    if (!item) return;
+    
+    AVAsset *asset = item.asset;
+    if ([asset isKindOfClass:[AVURLAsset class]]) {
+        NSURL *url = ((AVURLAsset *)asset).URL;
+        [self saveVideoFromURL:url];
+    }
+}
+
+- (void)saveVideoFromURL:(NSURL *)url {
+    if (!url) return;
+    NSData *data = [NSData dataWithContentsOfURL:url];
+    if (!data) return;
+
+    NSString *filename = url.lastPathComponent;
+    NSURL *destination = [NSURL fileURLWithPath:[NSTemporaryDirectory() stringByAppendingPathComponent:filename]];
+    [data writeToURL:destination atomically:YES];
+
+    [[PHPhotoLibrary sharedPhotoLibrary] performChanges:^{
+        [PHAssetChangeRequest creationRequestForAssetFromVideoAtFileURL:destination];
+    } completionHandler:^(BOOL success, NSError * _Nullable error) {
+        if (success) {
+            NSLog(@"✅ الفيديو تم حفظه تلقائيًا: %@", filename);
+        }
     }];
-
-    [alert addAction:download];
-    [alert addAction:[UIAlertAction actionWithTitle:@"إلغاء" style:UIAlertActionStyleCancel handler:nil]];
-
-    dispatch_async(dispatch_get_main_queue(), ^{
-        [[UIApplication sharedApplication].keyWindow.rootViewController presentViewController:alert animated:YES completion:nil];
-    });
 }
 
 @end
 
+#pragma mark - Floating Button
 
 %ctor {
     if (@available(iOS 16.0, *)) {
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
             UIWindow *window = [UIApplication sharedApplication].keyWindow;
-            CustomPopupView *popup = [[CustomPopupView alloc] initWithFrame:window.bounds];
-            popup.alpha = 0.0;
-            [window addSubview:popup];
 
-            [UIView animateWithDuration:0.4 animations:^{
-                popup.alpha = 1.0;
-            }];
+            // زر عائم
+            UIButton *floatingButton = [UIButton buttonWithType:UIButtonTypeSystem];
+            floatingButton.frame = CGRectMake(window.bounds.size.width - 80, window.bounds.size.height - 150, 60, 60);
+            floatingButton.layer.cornerRadius = 30;
+            floatingButton.backgroundColor = [[UIColor systemBlueColor] colorWithAlphaComponent:0.8];
+            [floatingButton setTitle:@"🛠" forState:UIControlStateNormal];
+            [floatingButton setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
+            floatingButton.clipsToBounds = YES;
+            [floatingButton addTarget:nil action:@selector(showCustomPopup) forControlEvents:UIControlEventTouchUpInside];
+
+            [window addSubview:floatingButton];
         });
-    } else {
-        NSLog(@"❌ هذه الأداة تعمل فقط على iOS 16 وأعلى.");
     }
 }
+
+%hook UIApplication
+
+- (void)showCustomPopup {
+    UIWindow *window = [UIApplication sharedApplication].keyWindow;
+    CustomPopupView *popup = [[CustomPopupView alloc] initWithFrame:window.bounds];
+    popup.alpha = 0.0;
+    [window addSubview:popup];
+    [UIView animateWithDuration:0.4 animations:^{
+        popup.alpha = 1.0;
+    }];
+}
+
+%end
