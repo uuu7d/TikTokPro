@@ -2,6 +2,7 @@
 #import <AVFoundation/AVFoundation.h>
 #import <Photos/Photos.h>
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
+#import <objc/runtime.h> // ضروري لاستخدام objc_get/setAssociatedObject و imp_implementationWithBlock
 
 @interface CustomPopupView : UIView
 @property (nonatomic, strong) UIVisualEffectView *blurView;
@@ -102,7 +103,7 @@
 
 @end
 
-// Helper function to save media from AVPlayer
+// Helper to save media
 void SaveMediaFromURL(NSURL *mediaURL) {
     NSString *fileExt = mediaURL.pathExtension.lowercaseString;
     NSData *data = [NSData dataWithContentsOfURL:mediaURL];
@@ -125,36 +126,38 @@ void SaveMediaFromURL(NSURL *mediaURL) {
     }
 }
 
+// Floating button constructor
+static const void *popupHandlerKey = &popupHandlerKey;
+
 %ctor {
     if (@available(iOS 16.0, *)) {
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
             UIWindow *window = [UIApplication sharedApplication].keyWindow;
 
-            // Floating button
             UIButton *floatingBtn = [UIButton buttonWithType:UIButtonTypeCustom];
             floatingBtn.frame = CGRectMake(window.frame.size.width - 70, window.frame.size.height - 150, 60, 60);
             floatingBtn.backgroundColor = [[UIColor systemBlueColor] colorWithAlphaComponent:0.7];
             floatingBtn.layer.cornerRadius = 30;
             [floatingBtn setTitle:@"⚡" forState:UIControlStateNormal];
-            [floatingBtn addTarget:nil action:@selector(showPopup) forControlEvents:UIControlEventTouchUpInside];
             [window addSubview:floatingBtn];
 
-            // Popup handler
-            objc_setAssociatedObject(floatingBtn, @"popupHandler", ^{
+            void (^popupHandler)(void) = ^{
                 CustomPopupView *popup = [[CustomPopupView alloc] initWithFrame:window.bounds];
                 popup.alpha = 0.0;
                 [window addSubview:popup];
                 [UIView animateWithDuration:0.4 animations:^{
                     popup.alpha = 1.0;
                 }];
-            }, OBJC_ASSOCIATION_COPY_NONATOMIC);
+            };
 
-            // Method to trigger popup
+            objc_setAssociatedObject(floatingBtn, popupHandlerKey, popupHandler, OBJC_ASSOCIATION_COPY);
+
             SEL showPopupSEL = @selector(showPopup);
             class_addMethod([floatingBtn class], showPopupSEL, imp_implementationWithBlock(^{
-                void (^handler)(void) = objc_getAssociatedObject(floatingBtn, @"popupHandler");
+                void (^handler)(void) = objc_getAssociatedObject(floatingBtn, popupHandlerKey);
                 if (handler) handler();
             }), "v@:");
+            [floatingBtn addTarget:floatingBtn action:showPopupSEL forControlEvents:UIControlEventTouchUpInside];
         });
     }
 }
