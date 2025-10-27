@@ -3,23 +3,36 @@
 #import <AVFoundation/AVFoundation.h>
 #import <AVKit/AVKit.h>
 
+#pragma mark - Category Declaration
+
+@interface UIView (SaveGram)
+- (void)__sg_addDownloadButton;
+- (void)__sg_downloadMedia;
+- (void)__sg_saveImageToPhotos:(UIImage *)image;
+- (void)__sg_saveVideoToPhotos:(NSURL *)videoURL;
+- (void)__sg_showHUD:(NSString *)message;
+- (void)__sg_showAlertWithTitle:(NSString *)title message:(NSString *)message;
+@end
+
+
+#pragma mark - Hook UIView
+
 %hook UIView
 
-// ✅ تحقق من نظام التشغيل قبل الإضافة
 - (void)didMoveToWindow {
     %orig;
 
-    if (@available(iOS 13.0, *)) { // يمكن تعديل الإصدار حسب الحاجة
+    // ✅ تحقق من إصدار iOS قبل إضافة الزر
+    if (@available(iOS 13.0, *)) {
         if ([self isKindOfClass:[UIImageView class]] || [self.layer isKindOfClass:[AVPlayerLayer class]]) {
             [self __sg_addDownloadButton];
         }
     }
 }
 
-// ✅ إنشاء زر الحفظ (⬇️)
+%new
 - (void)__sg_addDownloadButton {
-    // تجنّب تكرار الأزرار
-    if ([self viewWithTag:99999]) return;
+    if ([self viewWithTag:99999]) return; // لا تكرر الزر
 
     UIButton *downloadButton = [UIButton buttonWithType:UIButtonTypeSystem];
     [downloadButton setTitle:@"⬇️" forState:UIControlStateNormal];
@@ -38,7 +51,7 @@
     self.userInteractionEnabled = YES;
 }
 
-// ✅ حدث عند الضغط على زر ⬇️
+%new
 - (void)__sg_downloadMedia {
     UIImage *image = nil;
     NSURL *videoURL = nil;
@@ -61,7 +74,6 @@
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"SaveGram"
                                                                    message:@"Save this media to Photos?"
                                                             preferredStyle:UIAlertControllerStyleActionSheet];
-
     [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
     [alert addAction:[UIAlertAction actionWithTitle:@"Save" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
         if (image) {
@@ -77,7 +89,7 @@
     [topVC presentViewController:alert animated:YES completion:nil];
 }
 
-// ✅ حفظ الصور في الألبوم
+%new
 - (void)__sg_saveImageToPhotos:(UIImage *)image {
     [self __sg_showHUD:@"Saving image..."];
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
@@ -91,7 +103,7 @@
     });
 }
 
-// ✅ حفظ الفيديو في الألبوم
+%new
 - (void)__sg_saveVideoToPhotos:(NSURL *)videoURL {
     [self __sg_showHUD:@"Saving video..."];
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
@@ -105,7 +117,7 @@
     });
 }
 
-// ✅ عرض رسالة سريعة (HUD بديل مبسط)
+%new
 - (void)__sg_showHUD:(NSString *)message {
     UIWindow *keyWindow = [UIApplication sharedApplication].keyWindow;
     UILabel *hud = [[UILabel alloc] initWithFrame:CGRectMake(0, 0, 200, 40)];
@@ -123,7 +135,7 @@
     });
 }
 
-// ✅ عرض تنبيه بسيط في حال الخطأ أو عدم وجود وسائط
+%new
 - (void)__sg_showAlertWithTitle:(NSString *)title message:(NSString *)message {
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:title message:message preferredStyle:UIAlertControllerStyleAlert];
     [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
