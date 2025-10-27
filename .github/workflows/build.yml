@@ -4,54 +4,64 @@ on:
   push:
     branches:
       - main
+      - master
   pull_request:
 
 jobs:
   build:
     runs-on: macos-latest
+
     env:
       THEOS: ${{ github.workspace }}/theos
 
     steps:
-      # 1️⃣ Checkout code
-      - name: Checkout repository
-        uses: actions/checkout@v3
+      - name: 🔄 Checkout repository
+        uses: actions/checkout@v4
 
-      # 2️⃣ Install dependencies (Theos, make, etc.)
-      - name: Install dependencies
+      # 🧩 ذاكرة مؤقتة لتسريع عمليات البناء القادمة
+      - name: ⚙️ Cache Theos
+        uses: actions/cache@v3
+        with:
+          path: ${{ github.workspace }}/theos
+          key: theos-cache-${{ runner.os }}
+
+      # 🧰 تثبيت الأدوات المطلوبة
+      - name: 🛠️ Install dependencies
         run: |
-          # تثبيت Theos إذا لم يكن موجودًا
-          if [ ! -d "$THEOS" ]; then
+          brew install dpkg ldid make git perl
+
+      # 🧱 إعداد Theos فقط إذا لم يكن موجودًا مسبقًا
+      - name: 📦 Setup Theos (once)
+        run: |
+          mkdir -p $THEOS
+          echo "export THEOS=$THEOS" >> $HOME/.bash_profile
+
+          if [ ! -d "$THEOS/.git" ]; then
+            echo "🔽 Cloning Theos framework..."
             git clone --recursive https://github.com/theos/theos.git $THEOS
+          else
+            echo "✅ Theos already exists, skipping clone."
           fi
-          brew install make || true
-          brew install clang || true
 
-      # 3️⃣ تحميل iOS16 SDK
-      - name: Download iOS 16 SDK
-        run: |
-          mkdir -p $THEOS/sdks
-          curl -L -o $THEOS/sdks/iPhoneOS16.0.sdk.tar.xz https://github.com/theos/sdks/releases/download/16.0/iPhoneOS16.0.sdk.tar.xz
-          tar -xJf $THEOS/sdks/iPhoneOS16.0.sdk.tar.xz -C $THEOS/sdks
+          if [ ! -d "$THEOS/sdks" ]; then
+            echo "🔽 Cloning iOS SDKs..."
+            git clone --recursive https://github.com/theos/sdks.git $THEOS/sdks
+          else
+            echo "✅ iOS SDKs already exist, skipping clone."
+          fi
 
-      # 4️⃣ Build tweak
-      - name: Build tweak using Theos
+          echo "✅ Theos and SDKs ready."
+
+      # 🏗️ بناء التويك
+      - name: 🧩 Build Tweak
         run: |
-          echo "🏗️ Building tweak..."
-          export THEOS_PLATFORM_SDK=$THEOS/sdks/iPhoneOS16.0.sdk
+          echo "🏗️ Building tweak using Theos..."
           make package FINALPACKAGE=1
           echo "✅ Build completed successfully."
 
-      # 5️⃣ Archive the .deb package
-      - name: Archive output
-        run: |
-          mkdir -p output
-          cp .theos/obj/*.deb output/ || true
-        shell: bash
-
-      # 6️⃣ Upload the .deb artifact
-      - name: Upload artifact
-        uses: actions/upload-artifact@v3
+      # 📦 رفع ملف deb الناتج
+      - name: 📤 Upload deb package
+        uses: actions/upload-artifact@v4
         with:
-          name: tweak-package
-          path: output/
+          name: TikTokPro.deb
+          path: packages/*.deb
