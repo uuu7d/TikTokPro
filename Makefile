@@ -1,4 +1,6 @@
 ARCHS = arm64
+FINALPACKAGE = 1
+export ADDITIONAL_CFLAGS = -Wno-deprecated-declarations
 TARGET = iphone:clang:16.5:latest
 THEOS_DEVICE_IP = 127.0.0.1
 
