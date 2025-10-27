@@ -1,233 +1,173 @@
 #import <UIKit/UIKit.h>
-#import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
-#import <Photos/Photos.h>
 #import <AVFoundation/AVFoundation.h>
-#import <MobileCoreServices/MobileCoreServices.h>
+#import <Photos/Photos.h>
+#import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
-@interface FileManagerViewController : UIViewController <UIDocumentPickerDelegate>
+@interface CustomPopupView : UIView
+@property (nonatomic, strong) UIVisualEffectView *blurView;
+@property (nonatomic, strong) AVAudioPlayer *audioPlayer;
 @end
 
-@implementation FileManagerViewController
+@implementation CustomPopupView
 
-- (void)viewDidLoad {
-    [super viewDidLoad];
+- (instancetype)initWithFrame:(CGRect)frame {
+    self = [super initWithFrame:frame];
+    if (self) {
+        [self setupBlurBackground];
+        [self setupButtons];
+    }
+    return self;
+}
 
-    // الخلفية الضبابية
-    UIBlurEffect *blurEffect = [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemChromeMaterial];
-    UIVisualEffectView *blurView = [[UIVisualEffectView alloc] initWithEffect:blurEffect];
-    blurView.frame = self.view.bounds;
-    blurView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-    [self.view addSubview:blurView];
+- (void)setupBlurBackground {
+    UIBlurEffect *blurEffect = [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemMaterialDark];
+    self.blurView = [[UIVisualEffectView alloc] initWithEffect:blurEffect];
+    self.blurView.frame = self.bounds;
+    self.blurView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    [self addSubview:self.blurView];
+}
 
-    self.view.backgroundColor = [[UIColor systemBackgroundColor] colorWithAlphaComponent:0.75];
+- (void)setupButtons {
+    NSArray *titles = @[@"تيليجرام", @"سناب شات", @"🧹 تنظيف الكاش", @"🔁 إعادة التشغيل", @"💾 حفظ المحتوى المرئي"];
+    SEL actions[] = {@selector(openTelegram), @selector(openSnapchat), @selector(cleanCache), @selector(restartApp), @selector(saveMedia)};
 
-    // عناوين الأزرار والعمليات المقابلة
-    NSArray *titles = @[
-        @"📁 اختر ملف",
-        @"💾 حفظ محتوى مرئي",
-        @"📨 فتح Telegram",
-        @"👻 فتح Snapchat",
-        @"🧹 تنظيف الكاش",
-        @"🔄 إعادة تشغيل التطبيق"
-    ];
+    CGFloat buttonWidth = self.frame.size.width - 60;
+    CGFloat buttonHeight = 50;
+    CGFloat startY = 150;
 
-    SEL selectors[] = {
-        @selector(openDocumentPicker),
-        @selector(saveVisibleMedia),
-        @selector(openTelegram),
-        @selector(openSnapchat),
-        @selector(cleanCache),
-        @selector(restartApp)
-    };
-
-    CGFloat yOffset = 120;
     for (int i = 0; i < titles.count; i++) {
         UIButton *button = [UIButton buttonWithType:UIButtonTypeSystem];
-        button.frame = CGRectMake(50, yOffset + i*65, UIScreen.mainScreen.bounds.size.width - 100, 50);
+        button.frame = CGRectMake(30, startY + (i * 70), buttonWidth, buttonHeight);
         [button setTitle:titles[i] forState:UIControlStateNormal];
-        button.backgroundColor = [UIColor systemBlueColor];
-        button.layer.cornerRadius = 12;
         [button setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
-        button.titleLabel.font = [UIFont boldSystemFontOfSize:18];
-        [button addTarget:self action:selectors[i] forControlEvents:UIControlEventTouchUpInside];
-        [self.view addSubview:button];
+        button.backgroundColor = [[UIColor systemBlueColor] colorWithAlphaComponent:0.25];
+        button.layer.cornerRadius = 12.0;
+        button.clipsToBounds = YES;
+        [button addTarget:self action:actions[i] forControlEvents:UIControlEventTouchUpInside];
+        [self.blurView.contentView addSubview:button];
     }
 }
 
-#pragma mark - Document Picker
+#pragma mark - Actions
 
-- (void)openDocumentPicker {
-    UTType *fileType = UTTypeData;
-    UIDocumentPickerViewController *picker = [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:@[fileType]];
-    picker.delegate = self;
-    picker.allowsMultipleSelection = NO;
-
-    UIWindow *window = UIApplication.sharedApplication.connectedScenes.anyObject.windows.firstObject;
-    [window.rootViewController presentViewController:picker animated:YES completion:nil];
+- (void)playClickSound {
+    NSString *path = [[NSBundle mainBundle] pathForResource:@"click" ofType:@"wav"];
+    if (!path) return;
+    NSURL *url = [NSURL fileURLWithPath:path];
+    self.audioPlayer = [[AVAudioPlayer alloc] initWithContentsOfURL:url error:nil];
+    [self.audioPlayer play];
 }
-
-- (void)documentPicker:(UIDocumentPickerViewController *)controller didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
-    if (urls.count == 0) return;
-
-    NSURL *selectedFile = urls.firstObject;
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"📄 تم اختيار الملف"
-                                                                   message:selectedFile.path
-                                                            preferredStyle:UIAlertControllerStyleAlert];
-    [alert addAction:[UIAlertAction actionWithTitle:@"موافق" style:UIAlertActionStyleDefault handler:nil]];
-    [alert addAction:[UIAlertAction actionWithTitle:@"إلغاء" style:UIAlertActionStyleCancel handler:nil]];
-    [self presentViewController:alert animated:YES completion:nil];
-}
-
-#pragma mark - حفظ المحتوى المرئي (صورة أو فيديو معروض على الشاشة)
-
-- (void)saveVisibleMedia {
-    dispatch_async(dispatch_get_main_queue(), ^{
-        UIWindow *window = UIApplication.sharedApplication.windows.firstObject;
-        UIViewController *rootVC = window.rootViewController;
-        UIView *rootView = rootVC.view;
-
-        NSMutableArray<UIImage *> *images = [NSMutableArray array];
-
-        for (UIView *subview in rootView.subviews) {
-            if ([subview isKindOfClass:[UIImageView class]]) {
-                UIImageView *imgView = (UIImageView *)subview;
-                if (imgView.image) {
-                    [images addObject:imgView.image];
-                }
-            }
-        }
-
-        if (images.count > 0) {
-            for (UIImage *img in images) {
-                [[PHPhotoLibrary sharedPhotoLibrary] performChanges:^{
-                    [PHAssetChangeRequest creationRequestForAssetFromImage:img];
-                } completionHandler:^(BOOL success, NSError * _Nullable error) {
-                    NSLog(success ? @"✅ تم حفظ الصورة من واجهة التطبيق" : @"❌ فشل حفظ الصورة");
-                }];
-            }
-
-            [self showToast:@"✅ تم حفظ الصور المعروضة بنجاح"];
-        } else {
-            // محاولة التقاط فيديو إذا كان هناك AVPlayerLayer ظاهر
-            AVPlayerLayer *playerLayer = [self findAVPlayerLayerInView:rootView];
-            if (playerLayer) {
-                AVPlayerItem *item = playerLayer.player.currentItem;
-                if (item && item.asset) {
-                    [self exportAndSaveAVAsset:item.asset];
-                }
-            } else {
-                [self showToast:@"⚠️ لم يتم العثور على صور أو فيديوهات حالية"];
-            }
-        }
-    });
-}
-
-- (AVPlayerLayer *)findAVPlayerLayerInView:(UIView *)view {
-    for (CALayer *layer in view.layer.sublayers) {
-        if ([layer isKindOfClass:[AVPlayerLayer class]]) {
-            return (AVPlayerLayer *)layer;
-        }
-    }
-    for (UIView *subview in view.subviews) {
-        AVPlayerLayer *result = [self findAVPlayerLayerInView:subview];
-        if (result) return result;
-    }
-    return nil;
-}
-
-- (void)exportAndSaveAVAsset:(AVAsset *)asset {
-    NSString *outputPath = [NSTemporaryDirectory() stringByAppendingPathComponent:@"capturedVideo.mp4"];
-    NSURL *outputURL = [NSURL fileURLWithPath:outputPath];
-
-    AVAssetExportSession *exportSession = [[AVAssetExportSession alloc] initWithAsset:asset presetName:AVAssetExportPresetHighestQuality];
-    exportSession.outputFileType = AVFileTypeMPEG4;
-    exportSession.outputURL = outputURL;
-
-    [exportSession exportAsynchronouslyWithCompletionHandler:^{
-        if (exportSession.status == AVAssetExportSessionStatusCompleted) {
-            [[PHPhotoLibrary sharedPhotoLibrary] performChanges:^{
-                [PHAssetChangeRequest creationRequestForAssetFromVideoAtFileURL:outputURL];
-            } completionHandler:^(BOOL success, NSError * _Nullable error) {
-                NSLog(success ? @"✅ تم حفظ الفيديو من واجهة التطبيق" : @"❌ فشل حفظ الفيديو");
-            }];
-        }
-    }];
-}
-
-#pragma mark - الوظائف الإضافية
 
 - (void)openTelegram {
-    NSURL *url = [NSURL URLWithString:@"tg://resolve?domain=YourUsername"];
-    [[UIApplication sharedApplication] openURL:url options:@{} completionHandler:nil];
+    [self playClickSound];
+    NSURL *url = [NSURL URLWithString:@"tg://resolve?domain=yourTelegramUsername"];
+    if ([[UIApplication sharedApplication] canOpenURL:url])
+        [[UIApplication sharedApplication] openURL:url options:@{} completionHandler:nil];
 }
 
 - (void)openSnapchat {
-    NSURL *url = [NSURL URLWithString:@"snapchat://add/YourUsername"];
-    [[UIApplication sharedApplication] openURL:url options:@{} completionHandler:nil];
+    [self playClickSound];
+    NSURL *url = [NSURL URLWithString:@"https://www.snapchat.com/add/yourSnapUsername"];
+    if ([[UIApplication sharedApplication] canOpenURL:url])
+        [[UIApplication sharedApplication] openURL:url options:@{} completionHandler:nil];
 }
 
 - (void)cleanCache {
-    NSString *tempPath = NSTemporaryDirectory();
-    NSArray *files = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:tempPath error:nil];
-    NSUInteger totalRemoved = 0;
+    [self playClickSound];
+    NSString *appPath = NSHomeDirectory();
+    NSString *cachePath = [appPath stringByAppendingPathComponent:@"Library/Caches"];
+    NSArray *files = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:cachePath error:nil];
 
+    unsigned long long totalSize = 0;
     for (NSString *file in files) {
-        NSString *fullPath = [tempPath stringByAppendingPathComponent:file];
-        if ([[NSFileManager defaultManager] removeItemAtPath:fullPath error:nil]) {
-            totalRemoved++;
-        }
+        NSString *filePath = [cachePath stringByAppendingPathComponent:file];
+        NSDictionary *attrs = [[NSFileManager defaultManager] attributesOfItemAtPath:filePath error:nil];
+        totalSize += [attrs fileSize];
+        [[NSFileManager defaultManager] removeItemAtPath:filePath error:nil];
     }
 
-    NSString *msg = [NSString stringWithFormat:@"🧹 تم تنظيف %lu ملف مؤقت", (unsigned long)totalRemoved];
-    [self showToast:msg];
+    double mb = totalSize / (1024.0 * 1024.0);
+    NSString *msg = [NSString stringWithFormat:@"تم حذف %.2f ميغابايت من ملفات الكاش.", mb];
+
+    dispatch_async(dispatch_get_main_queue(), ^{
+        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"✅ تم التنظيف"
+                                                                       message:msg
+                                                                preferredStyle:UIAlertControllerStyleAlert];
+        [alert addAction:[UIAlertAction actionWithTitle:@"موافق" style:UIAlertActionStyleDefault handler:nil]];
+        [[UIApplication sharedApplication].keyWindow.rootViewController presentViewController:alert animated:YES completion:nil];
+    });
 }
 
 - (void)restartApp {
-    exit(0);
+    [self playClickSound];
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.6 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        exit(0);
+    });
 }
 
-#pragma mark - مساعدات عرضية
+- (void)saveMedia {
+    [self playClickSound];
 
-- (void)showToast:(NSString *)message {
-    dispatch_async(dispatch_get_main_queue(), ^{
-        UILabel *toast = [[UILabel alloc] initWithFrame:CGRectMake(40, UIScreen.mainScreen.bounds.size.height - 150, UIScreen.mainScreen.bounds.size.width - 80, 50)];
-        toast.backgroundColor = [[UIColor blackColor] colorWithAlphaComponent:0.7];
-        toast.textColor = [UIColor whiteColor];
-        toast.textAlignment = NSTextAlignmentCenter;
-        toast.layer.cornerRadius = 12;
-        toast.layer.masksToBounds = YES;
-        toast.text = message;
-        toast.alpha = 0;
-        [UIApplication.sharedApplication.keyWindow addSubview:toast];
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"💾 حفظ المحتوى"
+                                                                   message:@"أدخل رابط الصورة أو الفيديو:"
+                                                            preferredStyle:UIAlertControllerStyleAlert];
+    [alert addTextFieldWithConfigurationHandler:^(UITextField * _Nonnull textField) {
+        textField.placeholder = @"https://example.com/media.mp4";
+    }];
 
-        [UIView animateWithDuration:0.5 animations:^{
-            toast.alpha = 1;
-        } completion:^(BOOL finished) {
-            [UIView animateWithDuration:0.5 delay:2 options:0 animations:^{
-                toast.alpha = 0;
-            } completion:^(BOOL finished) {
-                [toast removeFromSuperview];
-            }];
+    UIAlertAction *download = [UIAlertAction actionWithTitle:@"تنزيل" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+        NSString *urlString = alert.textFields.firstObject.text;
+        NSURL *mediaURL = [NSURL URLWithString:urlString];
+        if (!mediaURL) return;
+
+        NSURLSessionDownloadTask *task = [[NSURLSession sharedSession] downloadTaskWithURL:mediaURL completionHandler:^(NSURL *location, NSURLResponse *response, NSError *error) {
+            if (error) return;
+
+            NSString *fileExt = response.suggestedFilename.pathExtension.lowercaseString;
+            NSData *data = [NSData dataWithContentsOfURL:location];
+
+            if ([fileExt isEqualToString:@"jpg"] || [fileExt isEqualToString:@"png"]) {
+                UIImage *image = [UIImage imageWithData:data];
+                if (image) {
+                    [[PHPhotoLibrary sharedPhotoLibrary] performChanges:^{
+                        [PHAssetChangeRequest creationRequestForAssetFromImage:image];
+                    } completionHandler:nil];
+                }
+            } else if ([fileExt isEqualToString:@"mp4"] || [fileExt isEqualToString:@"mov"]) {
+                NSURL *destination = [NSURL fileURLWithPath:[NSTemporaryDirectory() stringByAppendingPathComponent:response.suggestedFilename]];
+                [[NSFileManager defaultManager] moveItemAtURL:location toURL:destination error:nil];
+                [[PHPhotoLibrary sharedPhotoLibrary] performChanges:^{
+                    [PHAssetChangeRequest creationRequestForAssetFromVideoAtFileURL:destination];
+                } completionHandler:nil];
+            }
         }];
+        [task resume];
+    }];
+
+    [alert addAction:download];
+    [alert addAction:[UIAlertAction actionWithTitle:@"إلغاء" style:UIAlertActionStyleCancel handler:nil]];
+
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [[UIApplication sharedApplication].keyWindow.rootViewController presentViewController:alert animated:YES completion:nil];
     });
 }
 
 @end
 
-%hook UIApplication
 
-- (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions {
-    BOOL result = %orig;
+%ctor {
+    if (@available(iOS 16.0, *)) {
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            UIWindow *window = [UIApplication sharedApplication].keyWindow;
+            CustomPopupView *popup = [[CustomPopupView alloc] initWithFrame:window.bounds];
+            popup.alpha = 0.0;
+            [window addSubview:popup];
 
-    if (@available(iOS 16, *)) {
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 1 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
-            UIWindow *window = [[UIWindow alloc] initWithFrame:[UIScreen mainScreen].bounds];
-            window.rootViewController = [[FileManagerViewController alloc] init];
-            [window makeKeyAndVisible];
+            [UIView animateWithDuration:0.4 animations:^{
+                popup.alpha = 1.0;
+            }];
         });
+    } else {
+        NSLog(@"❌ هذه الأداة تعمل فقط على iOS 16 وأعلى.");
     }
-
-    return result;
 }
-
-%end
