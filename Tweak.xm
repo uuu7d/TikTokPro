@@ -1,5 +1,4 @@
 #import <UIKit/UIKit.h>
-#import "MBProgressHUD.h"
 #import <Photos/Photos.h>
 #import <AVFoundation/AVFoundation.h>
 #import <AVKit/AVKit.h>
