@@ -45,11 +45,11 @@ jobs:
           fi
 
           # 🔽 تحميل SDK 17.0 إذا لم يكن موجودًا
-          if [ ! -d "$THEOS/sdks/iPhoneOS17.0.sdk" ]; then
+          if [ ! -d "$THEOS/sdks/iPhoneOS16.5.0.sdk" ]; then
             echo "🔽 Downloading iOS 17.0 SDK..."
             mkdir -p $THEOS/sdks
-            curl -L -o $THEOS/sdks/iPhoneOS17.0.sdk.tar.xz https://github.com/theos/sdks/releases/download/17.0/iPhoneOS17.0.sdk.tar.xz
-            if [ -s "$THEOS/sdks/iPhoneOS17.0.sdk.tar.xz" ]; then
+            curl -L -o $THEOS/sdks/iPhoneOS16.5.0.sdk.tar.xz https://github.com/theos/sdks/releases/download/master-146e41f/iPhoneOS16.5.sdk.tar.xz
+            if [ -s "$THEOS/sdks/iPhoneOS16.5.sdk.tar.xz" ]; then
               tar -xJf $THEOS/sdks/iPhoneOS17.0.sdk.tar.xz -C $THEOS/sdks
               echo "✅ iOS 17.0 SDK extracted successfully."
             else
@@ -57,7 +57,7 @@ jobs:
               exit 1
             fi
           else
-            echo "✅ iOS 17.0 SDK already exists."
+            echo "✅ iOS 16.5.0 SDK already exists."
           fi
 
           echo "✅ Theos and SDK are ready."
