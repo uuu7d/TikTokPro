@@ -18,20 +18,20 @@ jobs:
       - name: 🔄 Checkout repository
         uses: actions/checkout@v4
 
-      # 🧩 تخزين مؤقت لتسريع البناء في المرات القادمة
+      # ⚙️ التخزين المؤقت لتسريع البناء في المرات القادمة
       - name: ⚙️ Cache Theos
         uses: actions/cache@v3
         with:
           path: ${{ github.workspace }}/theos
           key: theos-cache-${{ runner.os }}
 
-      # 🛠️ تثبيت المتطلبات
+      # 🛠️ تثبيت الأدوات اللازمة
       - name: 🛠️ Install dependencies
         run: |
           brew install dpkg ldid make git perl
 
-      # 📦 إعداد Theos و SDK (مرة واحدة فقط)
-      - name: 📦 Setup Theos and SDK
+      # 📦 إعداد Theos و SDK 16.5
+      - name: 📦 Setup Theos and iOS 16.5 SDK
         run: |
           set -e
           mkdir -p $THEOS
@@ -44,23 +44,23 @@ jobs:
             echo "✅ Theos already exists, skipping clone."
           fi
 
-          # 🔽 تحميل SDK 17.0 إذا لم يكن موجودًا
-          if [ ! -d "$THEOS/sdks/iPhoneOS16.5.0.sdk" ]; then
-            echo "🔽 Downloading iOS 17.0 SDK..."
+          # 🔽 تحميل SDK 16.5 إذا لم يكن موجودًا
+          if [ ! -d "$THEOS/sdks/iPhoneOS16.5.sdk" ]; then
+            echo "🔽 Downloading iOS 16.5 SDK..."
             mkdir -p $THEOS/sdks
-            curl -L -o $THEOS/sdks/iPhoneOS16.5.0.sdk.tar.xz https://github.com/theos/sdks/releases/download/master-146e41f/iPhoneOS16.5.sdk.tar.xz
+            curl -L -o $THEOS/sdks/iPhoneOS16.5.sdk.tar.xz https://github.com/theos/sdks/releases/download/master-146e41f/iPhoneOS16.5.sdk.tar.xz
             if [ -s "$THEOS/sdks/iPhoneOS16.5.sdk.tar.xz" ]; then
-              tar -xJf $THEOS/sdks/iPhoneOS17.0.sdk.tar.xz -C $THEOS/sdks
-              echo "✅ iOS 17.0 SDK extracted successfully."
+              tar -xJf $THEOS/sdks/iPhoneOS16.5.sdk.tar.xz -C $THEOS/sdks
+              echo "✅ iOS 16.5 SDK extracted successfully."
             else
               echo "❌ Failed to download SDK (empty file)."
               exit 1
             fi
           else
-            echo "✅ iOS 16.5.0 SDK already exists."
+            echo "✅ iOS 16.5 SDK already exists."
           fi
 
-          echo "✅ Theos and SDK are ready."
+          echo "✅ Theos and iOS 16.5 SDK are ready."
 
       # 🧩 بناء الأداة
       - name: 🧩 Build Tweak
