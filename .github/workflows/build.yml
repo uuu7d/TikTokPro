@@ -10,6 +10,7 @@ on:
 jobs:
   build:
     runs-on: macos-latest
+
     env:
       THEOS: ${{ github.workspace }}/theos
 
@@ -17,18 +18,22 @@ jobs:
       - name: 🔄 Checkout repository
         uses: actions/checkout@v4
 
+      # 🧩 تخزين مؤقت لتسريع البناء في المرات القادمة
       - name: ⚙️ Cache Theos
         uses: actions/cache@v3
         with:
           path: ${{ github.workspace }}/theos
           key: theos-cache-${{ runner.os }}
 
+      # 🛠️ تثبيت المتطلبات
       - name: 🛠️ Install dependencies
         run: |
           brew install dpkg ldid make git perl
 
-      - name: 📦 Setup Theos
+      # 📦 إعداد Theos و SDK (مرة واحدة فقط)
+      - name: 📦 Setup Theos and SDK
         run: |
+          set -e
           mkdir -p $THEOS
           echo "export THEOS=$THEOS" >> $HOME/.bash_profile
 
@@ -36,27 +41,35 @@ jobs:
             echo "🔽 Cloning Theos..."
             git clone --recursive https://github.com/theos/theos.git $THEOS
           else
-            echo "✅ Theos exists, skipping."
+            echo "✅ Theos already exists, skipping clone."
           fi
 
-          # تحميل SDK 16.0 إذا لم يكن موجودًا
-          if [ ! -d "$THEOS/sdks/iPhoneOS16.0.sdk" ]; then
-            echo "🔽 Downloading iOS 16.0 SDK..."
+          # 🔽 تحميل SDK 17.0 إذا لم يكن موجودًا
+          if [ ! -d "$THEOS/sdks/iPhoneOS17.0.sdk" ]; then
+            echo "🔽 Downloading iOS 17.0 SDK..."
             mkdir -p $THEOS/sdks
             curl -L -o $THEOS/sdks/iPhoneOS17.0.sdk.tar.xz https://github.com/theos/sdks/releases/download/17.0/iPhoneOS17.0.sdk.tar.xz
-         tar -xJf $THEOS/sdks/iPhoneOS17.0.sdk.tar.xz -C $THEOS/sdks
+            if [ -s "$THEOS/sdks/iPhoneOS17.0.sdk.tar.xz" ]; then
+              tar -xJf $THEOS/sdks/iPhoneOS17.0.sdk.tar.xz -C $THEOS/sdks
+              echo "✅ iOS 17.0 SDK extracted successfully."
+            else
+              echo "❌ Failed to download SDK (empty file)."
+              exit 1
+            fi
           else
-            echo "✅ iOS 16.0 SDK already exists."
+            echo "✅ iOS 17.0 SDK already exists."
           fi
 
-          echo "✅ Theos and SDK ready."
+          echo "✅ Theos and SDK are ready."
 
+      # 🧩 بناء الأداة
       - name: 🧩 Build Tweak
         run: |
-          echo "🏗️ Building tweak..."
+          echo "🏗️ Building tweak using Theos..."
           make package FINALPACKAGE=1
           echo "✅ Build completed successfully."
 
+      # 📤 رفع ملف deb الناتج
       - name: 📤 Upload deb package
         uses: actions/upload-artifact@v4
         with:
