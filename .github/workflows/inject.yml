@@ -1,4 +1,4 @@
-name: 💉 Build and Inject Multiple Dylibs
+name: 🧩 Build & Inject Tweak
 
 on:
   push:
@@ -10,66 +10,64 @@ jobs:
     runs-on: macos-latest
     env:
       THEOS: ${{ github.workspace }}/theos
+      APP_PATH: Payload/Shuggr.app
 
     steps:
       - name: 🔄 Checkout repository
         uses: actions/checkout@v4
 
-      - name: ⚙️ Cache Theos
-        uses: actions/cache@v3
-        with:
-          path: ${{ github.workspace }}/theos
-          key: theos-cache-${{ runner.os }}
-
-      - name: 🧱 Install dependencies
+      - name: ⚙️ Install dependencies
         run: |
-          brew install dpkg ldid make git perl python3
+          brew install make ldid dpkg git python3 unzip zip
 
-      - name: 🧩 Setup Theos and iOS SDK 16.5
+      - name: 🧱 Setup Theos and iOS SDK 16.5
         run: |
           mkdir -p $THEOS
-          echo "export THEOS=$THEOS" >> $HOME/.bash_profile
-
           if [ ! -d "$THEOS/.git" ]; then
-            echo "📦 Cloning Theos..."
+            echo "📥 Cloning Theos..."
             git clone --recursive https://github.com/theos/theos.git $THEOS
           else
             echo "✅ Theos already exists."
           fi
 
           if [ ! -d "$THEOS/sdks/iPhoneOS16.5.sdk" ]; then
-            echo "📦 Downloading iOS 16.5 SDK..."
+            echo "📥 Downloading iOS 16.5 SDK..."
             mkdir -p $THEOS/sdks
             curl -L -o $THEOS/sdks/iPhoneOS16.5.sdk.tar.xz https://github.com/theos/sdks/releases/download/master-146e41f/iPhoneOS16.5.sdk.tar.xz
             tar -xJf $THEOS/sdks/iPhoneOS16.5.sdk.tar.xz -C $THEOS/sdks
           else
-            echo "✅ iOS 16.5 SDK already exists."
+            echo "✅ SDK already available."
           fi
 
-      - name: 🏗️ Build tweak
+      - name: 🧩 Build tweak (output dylib)
         run: |
           echo "🏗️ Building tweak using Theos..."
-          make package FINALPACKAGE=1
+          make clean
+          make FINALPACKAGE=1
           mkdir -p artifacts
-          cp packages/*.dylib artifacts/ || true
+          find . -name "*.dylib" -exec cp {} artifacts/ \;
           echo "✅ Build completed successfully."
 
-      - name: 📦 Download working yololib
+      - name: 📦 Extract IPA
         run: |
-          echo "📦 Downloading yololib..."
-          mkdir -p tools
-          curl -L -o tools/yololib.py https://raw.githubusercontent.com/uraimo/yololib/master/yololib.py
-          chmod +x tools/yololib.py
-          echo "✅ yololib ready."
+          mkdir -p work
+          cd work
+          unzip ../artifacts/App.ipa
+          echo "✅ IPA extracted."
 
-      - name: 💉 Inject all dylibs into .ipa
+      - name: 🐍 Download yololib (dylib injector)
+        run: |
+          mkdir -p tools
+          curl -L -o tools/yololib.py https://raw.githubusercontent.com/rileytestut/yololib/master/yololib.py
+          chmod +x tools/yololib.py
+
+      - name: 💉 Inject tweak(s)
         run: |
           echo "💉 Injecting tweak(s)..."
           cd work
 
           APP_PATH="Payload/Shuggr.app"
           APP_BINARY=$(basename "$APP_PATH" .app)
-
           echo "App binary: $APP_BINARY"
 
           for dylib in ../artifacts/*.dylib; do
@@ -81,8 +79,14 @@ jobs:
 
           echo "✅ All dylibs injected."
 
-      - name: 📤 Upload dylib(s)
+      - name: 📦 Repack Patched IPA
+        run: |
+          cd work
+          zip -r ../artifacts/App_Patched.ipa Payload
+          echo "✅ App_Patched.ipa created."
+
+      - name: 📤 Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Injected_Dylibs
-          path: artifacts/*.dylib
+          name: App_Patched
+          path: artifacts/App_Patched.ipa
