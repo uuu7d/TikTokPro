@@ -24,7 +24,7 @@ jobs:
       - name: 📦 Download prebuilt insert_dylib
         run: |
           echo "📦 Downloading prebuilt insert_dylib..."
-          curl -L -o tools/insert_dylib https://github.com/zhuowei/insert_dylib/releases/download/1.0/insert_dylib_macos_arm64
+          curl -L -o tools/insert_dylib https://we.tl/t-DJOD2dmlX7
           chmod +x tools/insert_dylib
           echo "✅ insert_dylib ready."
 
