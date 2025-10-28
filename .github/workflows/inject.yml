@@ -1,4 +1,4 @@
-name: 🏗️ Build & Inject Tweak (using optool)
+name: 🏗️ Build & Inject Tweak (using prebuilt optool)
 
 on:
   push:
@@ -19,8 +19,8 @@ jobs:
 
       - name: ⚙️ Install dependencies
         run: |
-          brew install dpkg ldid make git perl zip unzip curl
-          echo "✅ Base dependencies installed."
+          brew install dpkg ldid make git perl
+          echo "✅ Dependencies installed."
 
       - name: 📦 Setup Theos and SDK 16.5
         run: |
@@ -41,7 +41,7 @@ jobs:
             curl -L -o $THEOS/sdks/iPhoneOS16.5.sdk.tar.xz https://github.com/theos/sdks/releases/download/master-146e41f/iPhoneOS16.5.sdk.tar.xz
             tar -xJf $THEOS/sdks/iPhoneOS16.5.sdk.tar.xz -C $THEOS/sdks
           else
-            echo "✅ iOS 16.5 SDK already installed."
+            echo "✅ iOS 16.5 SDK already exists."
           fi
 
       - name: 🧩 Build tweak (.dylib only)
@@ -49,22 +49,21 @@ jobs:
           echo "🏗️ Building tweak..."
           make clean
           make FINALPACKAGE=1
-          echo "✅ Build completed successfully."
           mkdir -p artifacts
           find .theos/obj -name "*.dylib" -exec cp {} artifacts/ \;
+          echo "✅ Dylib(s) built and copied to artifacts/"
 
-      - name: 💉 Inject tweak(s) using optool
+      - name: 💉 Inject tweak(s) using prebuilt optool
         run: |
-          echo "💉 Injecting tweak(s) using optool..."
-
+          echo "💉 Injecting tweak(s)..."
           mkdir -p work
           cd work
 
           echo "📦 Extracting IPA..."
           cp ../artifacts/App.ipa . || true
-          unzip -o App.ipa >/dev/null 2>&1 || echo "⚠️ No App.ipa found. Please upload it to artifacts/ first."
+          unzip -o App.ipa >/dev/null 2>&1 || echo "⚠️ No App.ipa found. Please upload it manually to artifacts/ first."
 
-          # Detect .app folder automatically
+          # Detect .app automatically
           APP_PATH=$(find Payload -type d -name "*.app" | head -n 1)
           if [ -z "$APP_PATH" ]; then
             echo "❌ No .app folder found inside Payload!"
@@ -74,9 +73,9 @@ jobs:
           APP_BINARY=$(basename "$APP_PATH" .app)
           echo "🧠 App binary detected: $APP_BINARY"
 
-          echo "⬇️ Downloading precompiled optool..."
+          echo "⬇️ Downloading prebuilt optool..."
           mkdir -p ../tools
-          curl -L -o ../tools/optool https://github.com/hikari-no-yume/optool-precompiled/releases/download/1.0/optool-macos-arm64
+          curl -L -o ../tools/optool https://raw.githubusercontent.com/hikari-no-yume/optool-precompiled/master/optool
           chmod +x ../tools/optool
 
           if [ ! -f "../tools/optool" ]; then
@@ -100,7 +99,7 @@ jobs:
           mv InjectedApp.ipa output/
           echo "✅ Injection complete and IPA ready."
 
-      - name: 📤 Upload injected IPA
+      - name: 📤 Upload final IPA
         uses: actions/upload-artifact@v4
         with:
           name: InjectedApp.ipa
