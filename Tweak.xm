@@ -31,7 +31,7 @@
         for (UIGestureRecognizer *g in window.gestureRecognizers) {
             if ([g isKindOfClass:[UITapGestureRecognizer class]] &&
                 ((UITapGestureRecognizer *)g).numberOfTouchesRequired == 2)
-                return; // gesture already exists
+                return;
         }
 
         UITapGestureRecognizer *twoFingerTap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(handleDoubleFingerTap:)];
@@ -39,7 +39,7 @@
         twoFingerTap.numberOfTapsRequired = 1;
         [window addGestureRecognizer:twoFingerTap];
 
-        NSLog(@"📲 [SaveTweak] Two-finger tap gesture initialized.");
+        NSLog(@"📲 [SaveTweak] Two-finger gesture added.");
     });
 }
 
@@ -49,7 +49,7 @@
     UIViewController *rootVC = UIApplication.sharedApplication.keyWindow.rootViewController;
     if (!rootVC) return;
 
-    NSLog(@"👆 [SaveTweak] Double-finger tap detected. Searching for media...");
+    NSLog(@"👆 [SaveTweak] Two-finger tap detected. Scanning...");
 
     UIImage *foundImage = [self findImageInView:rootVC.view];
     if (foundImage) {
@@ -57,16 +57,17 @@
         return;
     }
 
-    NSURL *videoURL = [self findVideoURLInView:rootVC.view];
+    NSURL *videoURL = [self deepFindVideoURLInView:rootVC.view];
     if (videoURL) {
+        NSLog(@"🎬 [SaveTweak] Found video URL: %@", videoURL);
         [self downloadVideoFromURL:videoURL];
         return;
     }
 
-    [self showToast:@"⚠️ لم يتم العثور على محتوى قابل للحفظ" success:NO];
+    [self showToast:@"⚠️ لم يتم العثور على فيديو للحفظ" success:NO];
 }
 
-#pragma mark - MEDIA DETECTION
+#pragma mark - FIND IMAGE
 
 - (UIImage *)findImageInView:(UIView *)view {
     if ([view isKindOfClass:[UIImageView class]]) {
@@ -80,68 +81,90 @@
     return nil;
 }
 
-- (NSURL *)findVideoURLInView:(UIView *)view {
-    // ✅ أولاً نحاول عبر AVPlayerLayer
+#pragma mark - FIND VIDEO (Deep Search)
+
+- (NSURL *)deepFindVideoURLInView:(UIView *)view {
+    NSString *className = NSStringFromClass([view class]);
+
+    // Try AVPlayerLayer first
     for (CALayer *layer in view.layer.sublayers) {
         if ([layer isKindOfClass:[AVPlayerLayer class]]) {
             AVPlayerLayer *playerLayer = (AVPlayerLayer *)layer;
-            NSURL *url = [self extractURLFromPlayer:playerLayer.player];
+            NSURL *url = [self extractDeepURLFromPlayer:playerLayer.player];
             if (url) return url;
         }
     }
 
-    // ✅ بعدها نحاول مع الواجهات الخاصة مثل StoryVideo
-    NSString *className = NSStringFromClass([view class]);
+    // Try Story/Video/Player classes
     if ([className containsString:@"Story"] ||
         [className containsString:@"Video"] ||
         [className containsString:@"Player"]) {
 
-        id player = nil;
-        @try { player = [view valueForKey:@"player"]; } @catch (...) {}
-        if (player && [player isKindOfClass:[AVPlayer class]]) {
-            NSURL *url = [self extractURLFromPlayer:(AVPlayer *)player];
-            if (url) return url;
+        // Try direct keys on the view itself
+        NSArray *keys = @[@"player", @"videoPlayer", @"_player", @"avPlayer", @"moviePlayer"];
+        for (NSString *key in keys) {
+            if ([view respondsToSelector:NSSelectorFromString(key)]) {
+                id player = nil;
+                @try { player = [view valueForKey:key]; } @catch (...) {}
+                if (player && [player isKindOfClass:[AVPlayer class]]) {
+                    NSURL *url = [self extractDeepURLFromPlayer:(AVPlayer *)player];
+                    if (url) return url;
+                }
+            }
         }
 
-        NSArray *possibleKeys = @[@"_URL", @"URL", @"currentURL", @"streamURL", @"videoURL"];
-        for (NSString *key in possibleKeys) {
-            if ([view respondsToSelector:NSSelectorFromString(key)]) {
-                id value = nil;
-                @try { value = [view valueForKey:key]; } @catch (...) {}
-                if ([value isKindOfClass:[NSURL class]]) return value;
-                if ([value isKindOfClass:[NSString class]]) return [NSURL URLWithString:value];
-            }
+        // Try known URL-like keys
+        NSArray *urlKeys = @[@"_URL", @"URL", @"currentURL", @"streamURL", @"videoURL", @"_videoURL"];
+        for (NSString *key in urlKeys) {
+            id value = nil;
+            @try { value = [view valueForKey:key]; } @catch (...) {}
+            if ([value isKindOfClass:[NSURL class]]) return value;
+            if ([value isKindOfClass:[NSString class]]) return [NSURL URLWithString:value];
         }
     }
 
-    // ✅ البحث داخل الـ subviews
+    // Search recursively
     for (UIView *sub in view.subviews) {
-        NSURL *url = [self findVideoURLInView:sub];
+        NSURL *url = [self deepFindVideoURLInView:sub];
         if (url) return url;
     }
     return nil;
 }
 
-- (NSURL *)extractURLFromPlayer:(AVPlayer *)player {
+- (NSURL *)extractDeepURLFromPlayer:(AVPlayer *)player {
     if (!player) return nil;
+
     AVPlayerItem *item = player.currentItem;
     if (!item) return nil;
 
+    // Try direct AVURLAsset
     if ([item.asset isKindOfClass:[AVURLAsset class]]) {
-        return ((AVURLAsset *)item.asset).URL;
+        AVURLAsset *avAsset = (AVURLAsset *)item.asset;
+        if (avAsset.URL) return avAsset.URL;
     }
 
-    NSArray *keys = @[@"asset", @"_asset", @"URL", @"_URL"];
+    // Try reflection on item
+    NSArray *keys = @[@"asset", @"_asset", @"URL", @"_URL", @"streamURL", @"currentURL"];
     for (NSString *key in keys) {
-        id value = nil;
-        @try { value = [item valueForKey:key]; } @catch (...) {}
-        if ([value isKindOfClass:[NSURL class]]) return value;
-        if ([value isKindOfClass:[NSString class]]) return [NSURL URLWithString:value];
+        id val = nil;
+        @try { val = [item valueForKey:key]; } @catch (...) {}
+        if ([val isKindOfClass:[NSURL class]]) return val;
+        if ([val isKindOfClass:[NSString class]]) return [NSURL URLWithString:val];
     }
+
+    // Try reflection on player
+    NSArray *playerKeys = @[@"currentURL", @"streamURL", @"_URL"];
+    for (NSString *key in playerKeys) {
+        id val = nil;
+        @try { val = [player valueForKey:key]; } @catch (...) {}
+        if ([val isKindOfClass:[NSURL class]]) return val;
+        if ([val isKindOfClass:[NSString class]]) return [NSURL URLWithString:val];
+    }
+
     return nil;
 }
 
-#pragma mark - SAVE MEDIA
+#pragma mark - SAVE
 
 - (void)saveImage:(UIImage *)image {
     NSLog(@"📸 [SaveTweak] Saving image...");
@@ -160,27 +183,33 @@
 - (void)downloadVideoFromURL:(NSURL *)url {
     if (!url) return;
     NSLog(@"🎬 [SaveTweak] Downloading video from %@", url.absoluteString);
-    NSData *data = [NSData dataWithContentsOfURL:url];
-    if (!data) {
-        [self showToast:@"⚠️ لم يتمكن من تحميل الفيديو" success:NO];
-        return;
-    }
 
-    NSString *path = [NSTemporaryDirectory() stringByAppendingPathComponent:@"saved_video.mov"];
-    [data writeToFile:path atomically:YES];
-    [[PHPhotoLibrary sharedPhotoLibrary] performChanges:^{
-        [PHAssetChangeRequest creationRequestForAssetFromVideoAtFileURL:[NSURL fileURLWithPath:path]];
-    } completionHandler:^(BOOL success, NSError * _Nullable error) {
-        dispatch_async(dispatch_get_main_queue(), ^{
-            if (success)
-                [self showToast:@"🎥 تم حفظ الفيديو بنجاح" success:YES];
-            else
-                [self showToast:[NSString stringWithFormat:@"❌ خطأ في حفظ الفيديو: %@", error.localizedDescription] success:NO];
-        });
-    }];
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
+        NSData *data = [NSData dataWithContentsOfURL:url];
+        if (!data) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [self showToast:@"⚠️ لم يتمكن من تحميل الفيديو" success:NO];
+            });
+            return;
+        }
+
+        NSString *path = [NSTemporaryDirectory() stringByAppendingPathComponent:@"saved_story.mov"];
+        [data writeToFile:path atomically:YES];
+
+        [[PHPhotoLibrary sharedPhotoLibrary] performChanges:^{
+            [PHAssetChangeRequest creationRequestForAssetFromVideoAtFileURL:[NSURL fileURLWithPath:path]];
+        } completionHandler:^(BOOL success, NSError * _Nullable error) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (success)
+                    [self showToast:@"🎥 تم حفظ الفيديو بنجاح" success:YES];
+                else
+                    [self showToast:[NSString stringWithFormat:@"❌ خطأ في حفظ الفيديو: %@", error.localizedDescription] success:NO];
+            });
+        }];
+    });
 }
 
-#pragma mark - TOAST MESSAGE
+#pragma mark - TOAST
 
 - (void)showToast:(NSString *)message success:(BOOL)success {
     dispatch_async(dispatch_get_main_queue(), ^{
