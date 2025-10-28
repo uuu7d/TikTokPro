@@ -13,28 +13,51 @@
 - (void)hide;
 @end
 
-@implementation FloatingDownloadButton
+@implementation FloatingDownloadButton {
+    CGPoint initialCenter;
+}
 
 + (instancetype)sharedButton {
     static FloatingDownloadButton *shared;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
         shared = [FloatingDownloadButton buttonWithType:UIButtonTypeCustom];
-        shared.frame = CGRectMake(UIScreen.mainScreen.bounds.size.width - 70,
-                                  UIScreen.mainScreen.bounds.size.height/2 - 25,
-                                  50, 50);
-        shared.layer.cornerRadius = 25;
+        CGFloat size = 55;
+        shared.frame = CGRectMake(UIScreen.mainScreen.bounds.size.width - (size + 15),
+                                  UIScreen.mainScreen.bounds.size.height/2 - (size/2),
+                                  size, size);
+        shared.layer.cornerRadius = size / 2;
         shared.backgroundColor = [[UIColor blackColor] colorWithAlphaComponent:0.6];
         [shared setTitle:@"📥" forState:UIControlStateNormal];
+        shared.titleLabel.font = [UIFont systemFontOfSize:28];
         [shared addTarget:shared action:@selector(downloadContent)
           forControlEvents:UIControlEventTouchUpInside];
         shared.hidden = YES;
+
+        // Gesture for dragging
+        UIPanGestureRecognizer *pan = [[UIPanGestureRecognizer alloc] initWithTarget:shared action:@selector(handlePan:)];
+        [shared addGestureRecognizer:pan];
+
+        // Listen for app activation to re-check visible content
         [[NSNotificationCenter defaultCenter] addObserver:shared
                                                  selector:@selector(checkVisibleContent)
                                                      name:UIApplicationDidBecomeActiveNotification
                                                    object:nil];
     });
     return shared;
+}
+
+- (void)handlePan:(UIPanGestureRecognizer *)pan {
+    UIView *view = pan.view;
+    CGPoint translation = [pan translationInView:view.superview];
+
+    if (pan.state == UIGestureRecognizerStateBegan) {
+        initialCenter = view.center;
+    }
+
+    if (pan.state == UIGestureRecognizerStateChanged) {
+        view.center = CGPointMake(initialCenter.x + translation.x, initialCenter.y + translation.y);
+    }
 }
 
 - (void)show {
@@ -61,9 +84,18 @@
 }
 
 - (BOOL)findMediaInView:(UIView *)view {
+    // Check if class name indicates a story or video container
+    NSString *className = NSStringFromClass([view class]);
+    if ([className containsString:@"Story"] || [className containsString:@"Video"] || [className containsString:@"Player"]) {
+        return YES;
+    }
+
+    // Direct checks
+    if ([view isKindOfClass:[UIImageView class]]) return YES;
+    if ([view.layer isKindOfClass:[AVPlayerLayer class]]) return YES;
+
+    // Recursive scan
     for (UIView *sub in view.subviews) {
-        if ([sub isKindOfClass:[UIImageView class]]) return YES;
-        if ([sub.layer isKindOfClass:[AVPlayerLayer class]]) return YES;
         if ([self findMediaInView:sub]) return YES;
     }
     return NO;
@@ -80,6 +112,13 @@
         NSURL *url = ((AVURLAsset *)foundVideo.asset).URL;
         [self downloadVideoFromURL:url];
     } else {
+        // fallback: try to find story player (custom classes)
+        NSURL *storyURL = [self findStoryVideoURLInView:rootVC.view];
+        if (storyURL) {
+            [self downloadVideoFromURL:storyURL];
+            return;
+        }
+
         UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"⚠️"
                                                                        message:@"لم يتم العثور على محتوى قابل للتحميل"
                                                                 preferredStyle:UIAlertControllerStyleAlert];
@@ -104,12 +143,32 @@
     for (CALayer *layer in view.layer.sublayers) {
         if ([layer isKindOfClass:[AVPlayerLayer class]]) {
             AVPlayerLayer *playerLayer = (AVPlayerLayer *)layer;
-            return playerLayer.player.currentItem;
+            if ([playerLayer.player.currentItem.asset isKindOfClass:[AVURLAsset class]]) {
+                return playerLayer.player.currentItem;
+            }
         }
     }
     for (UIView *sub in view.subviews) {
         AVPlayerItem *item = [self findVideoInView:sub];
         if (item) return item;
+    }
+    return nil;
+}
+
+- (NSURL *)findStoryVideoURLInView:(UIView *)view {
+    NSString *className = NSStringFromClass([view class]);
+    if ([className containsString:@"Story"] || [className containsString:@"Video"]) {
+        id playerObj = [view valueForKey:@"player"];
+        if ([playerObj isKindOfClass:[AVPlayer class]]) {
+            AVPlayer *player = (AVPlayer *)playerObj;
+            if ([player.currentItem.asset isKindOfClass:[AVURLAsset class]]) {
+                return ((AVURLAsset *)player.currentItem.asset).URL;
+            }
+        }
+    }
+    for (UIView *sub in view.subviews) {
+        NSURL *url = [self findStoryVideoURLInView:sub];
+        if (url) return url;
     }
     return nil;
 }
@@ -126,7 +185,7 @@
     if (!url) return;
     NSData *videoData = [NSData dataWithContentsOfURL:url];
     if (!videoData) return;
-    NSString *tempPath = [NSTemporaryDirectory() stringByAppendingPathComponent:@"downloaded.mov"];
+    NSString *tempPath = [NSTemporaryDirectory() stringByAppendingPathComponent:@"downloaded_story.mov"];
     [videoData writeToFile:tempPath atomically:YES];
     [[PHPhotoLibrary sharedPhotoLibrary] performChanges:^{
         [PHAssetChangeRequest creationRequestForAssetFromVideoAtFileURL:[NSURL fileURLWithPath:tempPath]];
