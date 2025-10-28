@@ -1,55 +1,75 @@
-name: inject-dylib
-
+name: inject
 on:
   workflow_dispatch:
-  push:
-    branches: [ main ]
 
 jobs:
   inject:
     runs-on: macos-latest
+
     steps:
-      - name: Checkout
+      - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Install Homebrew deps
+      - name: Install dependencies
         run: |
           brew update
-          brew install ldid || true
+          brew install ldid unzip zip
 
       - name: Prepare workspace
-        run: |
-          mkdir -p work
+        run: mkdir -p artifacts tools work
 
-      - name: Download IPA (if using Releases) - optional
+      - name: Download prebuilt insert_dylib
         run: |
-          # مثال: curl -L -o artifacts/MyApp.ipa "https://github.com/USER/REPO/releases/download/v1/MyApp.ipa"
-          ls -la artifacts || true
+          echo "📦 Downloading prebuilt insert_dylib..."
+          curl -L -o tools/insert_dylib https://github.com/Tyilo/insert_dylib/releases/download/v1.0/insert_dylib
+          chmod +x tools/insert_dylib
+          ./tools/insert_dylib --version || echo "✅ insert_dylib ready"
 
-      - name: Build Theos tweak (optional)
+      - name: Extract IPA
         run: |
-          # اختياري: إن أردت أن تبني هنا، تأكد أن Theos مهيأ في الـ runner
-          # make clean && make package FINALPACKAGE=1 || true
-          ls -la theos || true
+          echo "📦 Extracting IPA..."
+          cd artifacts
+          unzip -o App.ipa -d ../work/
+          cd ../work
+          APP_PATH=$(find Payload -type d -name "*.app" | head -n 1)
+          echo "APP_PATH=$APP_PATH" >> $GITHUB_ENV
+          echo "✅ Found app at $APP_PATH"
 
-      - name: Build insert_dylib
+      - name: Inject tweak dylib
         run: |
-          git clone https://github.com/Tyilo/insert_dylib.git /tmp/insert_dylib || true
-          cd /tmp/insert_dylib
-          make || true
-          cp insert_dylib $GITHUB_WORKSPACE/tools/insert_dylib || true
-          chmod +x $GITHUB_WORKSPACE/tools/insert_dylib
+          echo "💉 Injecting tweak..."
+          cd work
+          APP_BINARY=$(basename "$APP_PATH" .app)
+          echo "App binary: $APP_BINARY"
+          ../tools/insert_dylib --all-yes ../artifacts/Tweak.dylib "$APP_PATH/$APP_BINARY" "$APP_PATH/${APP_BINARY}_patched"
+          mv "$APP_PATH/${APP_BINARY}_patched" "$APP_PATH/$APP_BINARY"
+          echo "✅ Injection done"
 
-      - name: Inject (uses inject.sh)
-        env:
-          IPA_PATH: artifacts/MyApp.ipa
-          DYLIB_PATH: theos/deploy/FileSaverTweak.dylib
-          APP_NAME: MyApp
+      - name: Resign app binary
         run: |
-          ./inject.sh "$IPA_PATH" "$DYLIB_PATH"
+          echo "🔏 Re-signing app..."
+          cd work
+          APP_BINARY=$(basename "$APP_PATH" .app)
+          
+          # إزالة التوقيعات القديمة من التطبيق والمكتبات
+          find "$APP_PATH" -name "_CodeSignature" -exec rm -rf {} +
+          find "$APP_PATH" -name "CodeResources" -exec rm -rf {} +
+          
+          # توقيع المكتبة المحقونة + التطبيق نفسه
+          ldid -S "$APP_PATH/$APP_BINARY"
+          ldid -S "$APP_PATH/../Tweak.dylib" || true
+          
+          echo "✅ Re-sign completed."
 
-      - name: Upload resulting IPA
+      - name: Repack IPA
+        run: |
+          echo "📦 Repacking IPA..."
+          cd work
+          zip -r ../artifacts/App_patched_signed.ipa Payload
+          echo "✅ Done! Saved as artifacts/App_patched_signed.ipa"
+
+      - name: Upload final IPA
         uses: actions/upload-artifact@v4
         with:
-          name: Injected-IPA
-          path: Injected.ipa
+          name: App_patched_signed
+          path: artifacts/App_patched_signed.ipa
