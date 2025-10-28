@@ -1,78 +1,88 @@
-name: Inject Tweak into IPA
+name: 💉 Build and Inject Multiple Dylibs
 
 on:
-  workflow_dispatch:
+  push:
+    branches: [ main, master ]
+  pull_request:
 
 jobs:
-  inject:
+  build:
     runs-on: macos-latest
+    env:
+      THEOS: ${{ github.workspace }}/theos
 
     steps:
-      - name: 📥 Checkout repository
+      - name: 🔄 Checkout repository
         uses: actions/checkout@v4
 
-      - name: 🧰 Install dependencies
-        run: |
-          brew update
-          brew install ldid unzip zip
+      - name: ⚙️ Cache Theos
+        uses: actions/cache@v3
+        with:
+          path: ${{ github.workspace }}/theos
+          key: theos-cache-${{ runner.os }}
 
-      - name: 📁 Prepare workspace
+      - name: 🧱 Install dependencies
         run: |
-          mkdir -p artifacts tools work
-          echo "✅ Workspace ready."
+          brew install dpkg ldid make git perl python3
 
-      - name: 📦 Download prebuilt insert_dylib
+      - name: 🧩 Setup Theos and iOS SDK 16.5
         run: |
-          echo "📦 Downloading prebuilt insert_dylib..."
-          curl -L -o tools/insert_dylib https://we.tl/t-DJOD2dmlX7
-          chmod +x tools/insert_dylib
-          echo "✅ insert_dylib ready."
+          mkdir -p $THEOS
+          echo "export THEOS=$THEOS" >> $HOME/.bash_profile
 
-      - name: 📦 Extract IPA
-        run: |
-          echo "📂 Extracting IPA..."
-          cd artifacts
-          unzip -o App.ipa -d ../work/
-          cd ../work
-          APP_PATH=$(find Payload -type d -name "*.app" | head -n 1)
-          echo "APP_PATH=$APP_PATH" >> $GITHUB_ENV
-          echo "✅ Found app at $APP_PATH"
+          if [ ! -d "$THEOS/.git" ]; then
+            echo "📦 Cloning Theos..."
+            git clone --recursive https://github.com/theos/theos.git $THEOS
+          else
+            echo "✅ Theos already exists."
+          fi
 
-      - name: 💉 Inject tweak dylib
+          if [ ! -d "$THEOS/sdks/iPhoneOS16.5.sdk" ]; then
+            echo "📦 Downloading iOS 16.5 SDK..."
+            mkdir -p $THEOS/sdks
+            curl -L -o $THEOS/sdks/iPhoneOS16.5.sdk.tar.xz https://github.com/theos/sdks/releases/download/master-146e41f/iPhoneOS16.5.sdk.tar.xz
+            tar -xJf $THEOS/sdks/iPhoneOS16.5.sdk.tar.xz -C $THEOS/sdks
+          else
+            echo "✅ iOS 16.5 SDK already exists."
+          fi
+
+      - name: 🏗️ Build tweak
         run: |
-          echo "💉 Injecting tweak..."
+          echo "🏗️ Building tweak using Theos..."
+          make package FINALPACKAGE=1
+          mkdir -p artifacts
+          cp packages/*.dylib artifacts/ || true
+          echo "✅ Build completed successfully."
+
+      - name: 📦 Download working yololib
+        run: |
+          echo "📦 Downloading yololib..."
+          mkdir -p tools
+          curl -L -o tools/yololib.py https://raw.githubusercontent.com/uraimo/yololib/master/yololib.py
+          chmod +x tools/yololib.py
+          echo "✅ yololib ready."
+
+      - name: 💉 Inject all dylibs into .ipa
+        run: |
+          echo "💉 Injecting tweak(s)..."
           cd work
+
+          APP_PATH="Payload/Shuggr.app"
           APP_BINARY=$(basename "$APP_PATH" .app)
+
           echo "App binary: $APP_BINARY"
-          ../tools/insert_dylib --all-yes ../artifacts/Tweak.dylib "$APP_PATH/$APP_BINARY" "$APP_PATH/${APP_BINARY}_patched"
-          mv "$APP_PATH/${APP_BINARY}_patched" "$APP_PATH/$APP_BINARY"
-          echo "✅ Injection done."
 
-      - name: 🔏 Re-sign app binary
-        run: |
-          echo "🔏 Re-signing app..."
-          cd work
-          APP_BINARY=$(basename "$APP_PATH" .app)
+          for dylib in ../artifacts/*.dylib; do
+            name=$(basename "$dylib")
+            echo "➡️ Injecting $name..."
+            python3 ../tools/yololib.py "$APP_PATH/$APP_BINARY" "@executable_path/$name"
+            cp "$dylib" "$APP_PATH/"
+          done
 
-          # إزالة التوقيعات القديمة
-          find "$APP_PATH" -name "_CodeSignature" -exec rm -rf {} +
-          find "$APP_PATH" -name "CodeResources" -exec rm -rf {} +
+          echo "✅ All dylibs injected."
 
-          # توقيع التطبيق والمكتبة المحقونة
-          ldid -S "$APP_PATH/$APP_BINARY"
-          ldid -S ../artifacts/Tweak.dylib || true
-
-          echo "✅ Re-sign completed."
-
-      - name: 📦 Repack IPA
-        run: |
-          echo "📦 Repacking IPA..."
-          cd work
-          zip -r ../artifacts/App_patched_signed.ipa Payload
-          echo "✅ Done! Saved as artifacts/App_patched_signed.ipa"
-
-      - name: 🚀 Upload final IPA
+      - name: 📤 Upload dylib(s)
         uses: actions/upload-artifact@v4
         with:
-          name: App_patched_signed
-          path: artifacts/App_patched_signed.ipa
+          name: Injected_Dylibs
+          path: artifacts/*.dylib
