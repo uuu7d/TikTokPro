@@ -1,4 +1,4 @@
-name: Build Theos Tweak (Dylib Output)
+name: Build Theos Tweak
 
 on:
   push:
@@ -25,7 +25,7 @@ jobs:
 
       - name: 🛠️ Install dependencies
         run: |
-          brew install ldid make git perl dpkg
+          brew install dpkg ldid make git perl
 
       - name: 📦 Setup Theos and SDK 16.5
         run: |
@@ -36,9 +36,10 @@ jobs:
             echo "🔽 Cloning Theos..."
             git clone --recursive https://github.com/theos/theos.git $THEOS
           else
-            echo "✅ Theos already exists, skipping clone."
+            echo "✅ Theos exists, skipping."
           fi
 
+          # تحميل SDK 16.5 إذا لم يكن موجودًا
           if [ ! -d "$THEOS/sdks/iPhoneOS16.5.sdk" ]; then
             echo "🔽 Downloading iOS 16.5 SDK..."
             mkdir -p $THEOS/sdks
@@ -50,15 +51,14 @@ jobs:
 
           echo "✅ Theos and SDK ready."
 
-      - name: 🧩 Build dylib instead of .deb
+      - name: 🧩 Build Tweak
         run: |
-          echo "🏗️ Building tweak (dylib only)..."
-          make clean
-          make FINALPACKAGE=1
+          echo "🏗️ Building tweak using Theos..."
+          make clean && make package FINALPACKAGE=1
           echo "✅ Build completed successfully."
 
-      - name: 📤 Upload built dylib
+      - name: 📤 Upload deb package
         uses: actions/upload-artifact@v4
         with:
-          name: FileSaverTweak.dylib
-          path: .theos/obj/arm64/*.dylib
+          name: FuckMeIamHorny.dylib
+          path: packages/*.dylib
