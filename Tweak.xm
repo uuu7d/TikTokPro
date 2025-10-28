@@ -63,8 +63,7 @@
 - (BOOL)findMediaInView:(UIView *)view {
     for (UIView *sub in view.subviews) {
         if ([sub isKindOfClass:[UIImageView class]]) return YES;
-        if ([sub isKindOfClass:[AVPlayerView class]] ||
-            [sub isKindOfClass:[AVPlayerLayer class]]) return YES;
+        if ([sub.layer isKindOfClass:[AVPlayerLayer class]]) return YES;
         if ([self findMediaInView:sub]) return YES;
     }
     return NO;
