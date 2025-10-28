@@ -1,109 +1,201 @@
+// Tweak.xm
+#pragma clang diagnostic ignored "-Wunused-variable"
+#pragma clang diagnostic ignored "-Wunused-but-set-variable"
+
 #import <UIKit/UIKit.h>
 #import <AVFoundation/AVFoundation.h>
 #import <Photos/Photos.h>
+#import <objc/runtime.h>
 
-@interface FileSaverButton : UIButton
+@interface FloatingDownloadButton : UIButton
++ (instancetype)sharedButton;
+- (void)show;
+- (void)hide;
 @end
 
-@implementation FileSaverButton
-@end
+@implementation FloatingDownloadButton {
+    CGPoint initialCenter;
+}
 
-static FileSaverButton *floatingButton;
++ (instancetype)sharedButton {
+    static FloatingDownloadButton *shared;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        shared = [FloatingDownloadButton buttonWithType:UIButtonTypeCustom];
+        CGFloat size = 55;
+        shared.frame = CGRectMake(UIScreen.mainScreen.bounds.size.width - (size + 15),
+                                  UIScreen.mainScreen.bounds.size.height/2 - (size/2),
+                                  size, size);
+        shared.layer.cornerRadius = size / 2;
+        shared.backgroundColor = [[UIColor blackColor] colorWithAlphaComponent:0.6];
+        [shared setTitle:@"📥" forState:UIControlStateNormal];
+        shared.titleLabel.font = [UIFont systemFontOfSize:28];
+        [shared addTarget:shared action:@selector(downloadContent)
+          forControlEvents:UIControlEventTouchUpInside];
+        shared.hidden = YES;
 
-%hook UIView
+        // Gesture for dragging
+        UIPanGestureRecognizer *pan = [[UIPanGestureRecognizer alloc] initWithTarget:shared action:@selector(handlePan:)];
+        [shared addGestureRecognizer:pan];
 
-- (void)didMoveToWindow {
-    %orig;
+        // Listen for app activation to re-check visible content
+        [[NSNotificationCenter defaultCenter] addObserver:shared
+                                                 selector:@selector(checkVisibleContent)
+                                                     name:UIApplicationDidBecomeActiveNotification
+                                                   object:nil];
+    });
+    return shared;
+}
 
-    if (!floatingButton && self.window) {
-        floatingButton = [FileSaverButton buttonWithType:UIButtonTypeCustom];
-        [floatingButton setTitle:@"📥" forState:UIControlStateNormal];
-        floatingButton.backgroundColor = [[UIColor blackColor] colorWithAlphaComponent:0.6];
-        floatingButton.layer.cornerRadius = 30;
-        floatingButton.frame = CGRectMake(UIScreen.mainScreen.bounds.size.width - 80,
-                                          UIScreen.mainScreen.bounds.size.height / 2 - 30,
-                                          60, 60);
-        floatingButton.layer.zPosition = FLT_MAX;
-        [floatingButton addTarget:self action:@selector(saveVisibleMedia) forControlEvents:UIControlEventTouchUpInside];
+- (void)handlePan:(UIPanGestureRecognizer *)pan {
+    UIView *view = pan.view;
+    CGPoint translation = [pan translationInView:view.superview];
 
-        [[UIApplication sharedApplication].keyWindow addSubview:floatingButton];
-        floatingButton.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin | UIViewAutoresizingFlexibleTopMargin | UIViewAutoresizingFlexibleBottomMargin;
+    if (pan.state == UIGestureRecognizerStateBegan) {
+        initialCenter = view.center;
+    }
+
+    if (pan.state == UIGestureRecognizerStateChanged) {
+        view.center = CGPointMake(initialCenter.x + translation.x, initialCenter.y + translation.y);
     }
 }
 
-%new
-- (void)saveVisibleMedia {
-    UIView *topView = [UIApplication sharedApplication].keyWindow.rootViewController.view;
-    NSURL *videoURL = [self findVideoURLInView:topView];
-    UIImage *image = [self findImageInView:topView];
+- (void)show {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        self.hidden = NO;
+        UIWindow *window = UIApplication.sharedApplication.keyWindow ?: UIApplication.sharedApplication.windows.firstObject;
+        if (self.superview != window) [window addSubview:self];
+    });
+}
 
-    if (videoURL) {
-        [self saveVideoFromURL:videoURL];
-    } else if (image) {
-        [self saveImage:image];
+- (void)hide {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        self.hidden = YES;
+    });
+}
+
+- (void)checkVisibleContent {
+    UIViewController *topVC = UIApplication.sharedApplication.keyWindow.rootViewController;
+    if (!topVC) return;
+
+    BOOL foundMedia = [self findMediaInView:topVC.view];
+    if (foundMedia) [self show];
+    else [self hide];
+}
+
+- (BOOL)findMediaInView:(UIView *)view {
+    // Check if class name indicates a story or video container
+    NSString *className = NSStringFromClass([view class]);
+    if ([className containsString:@"Story"] || [className containsString:@"Video"] || [className containsString:@"Player"]) {
+        return YES;
+    }
+
+    // Direct checks
+    if ([view isKindOfClass:[UIImageView class]]) return YES;
+    if ([view.layer isKindOfClass:[AVPlayerLayer class]]) return YES;
+
+    // Recursive scan
+    for (UIView *sub in view.subviews) {
+        if ([self findMediaInView:sub]) return YES;
+    }
+    return NO;
+}
+
+- (void)downloadContent {
+    UIViewController *rootVC = UIApplication.sharedApplication.keyWindow.rootViewController;
+    UIImage *foundImage = [self findImageInView:rootVC.view];
+    AVPlayerItem *foundVideo = [self findVideoInView:rootVC.view];
+
+    if (foundImage) {
+        [self saveImage:foundImage];
+    } else if (foundVideo) {
+        NSURL *url = ((AVURLAsset *)foundVideo.asset).URL;
+        [self downloadVideoFromURL:url];
     } else {
-        [self showAlert:@"لم يتم العثور على صورة أو فيديو"];
+        // fallback: try to find story player (custom classes)
+        NSURL *storyURL = [self findStoryVideoURLInView:rootVC.view];
+        if (storyURL) {
+            [self downloadVideoFromURL:storyURL];
+            return;
+        }
+
+        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"⚠️"
+                                                                       message:@"لم يتم العثور على محتوى قابل للتحميل"
+                                                                preferredStyle:UIAlertControllerStyleAlert];
+        [alert addAction:[UIAlertAction actionWithTitle:@"حسنًا" style:UIAlertActionStyleCancel handler:nil]];
+        [rootVC presentViewController:alert animated:YES completion:nil];
     }
 }
 
-%new
 - (UIImage *)findImageInView:(UIView *)view {
     if ([view isKindOfClass:[UIImageView class]]) {
-        UIImageView *iv = (UIImageView *)view;
-        if (iv.image) return iv.image;
+        UIImageView *imgView = (UIImageView *)view;
+        if (imgView.image) return imgView.image;
     }
-    for (UIView *subview in view.subviews) {
-        UIImage *found = [self findImageInView:subview];
-        if (found) return found;
+    for (UIView *sub in view.subviews) {
+        UIImage *img = [self findImageInView:sub];
+        if (img) return img;
     }
     return nil;
 }
 
-%new
-- (NSURL *)findVideoURLInView:(UIView *)view {
-    if ([view.layer isKindOfClass:[AVPlayerLayer class]]) {
-        AVPlayerLayer *layer = (AVPlayerLayer *)view.layer;
-        AVPlayerItem *item = layer.player.currentItem;
-        if ([item.asset isKindOfClass:[AVURLAsset class]]) {
-            return [(AVURLAsset *)item.asset URL];
+- (AVPlayerItem *)findVideoInView:(UIView *)view {
+    for (CALayer *layer in view.layer.sublayers) {
+        if ([layer isKindOfClass:[AVPlayerLayer class]]) {
+            AVPlayerLayer *playerLayer = (AVPlayerLayer *)layer;
+            if ([playerLayer.player.currentItem.asset isKindOfClass:[AVURLAsset class]]) {
+                return playerLayer.player.currentItem;
+            }
         }
     }
     for (UIView *sub in view.subviews) {
-        NSURL *found = [self findVideoURLInView:sub];
-        if (found) return found;
+        AVPlayerItem *item = [self findVideoInView:sub];
+        if (item) return item;
     }
     return nil;
 }
 
-%new
+- (NSURL *)findStoryVideoURLInView:(UIView *)view {
+    NSString *className = NSStringFromClass([view class]);
+    if ([className containsString:@"Story"] || [className containsString:@"Video"]) {
+        id playerObj = [view valueForKey:@"player"];
+        if ([playerObj isKindOfClass:[AVPlayer class]]) {
+            AVPlayer *player = (AVPlayer *)playerObj;
+            if ([player.currentItem.asset isKindOfClass:[AVURLAsset class]]) {
+                return ((AVURLAsset *)player.currentItem.asset).URL;
+            }
+        }
+    }
+    for (UIView *sub in view.subviews) {
+        NSURL *url = [self findStoryVideoURLInView:sub];
+        if (url) return url;
+    }
+    return nil;
+}
+
 - (void)saveImage:(UIImage *)image {
     [[PHPhotoLibrary sharedPhotoLibrary] performChanges:^{
         [PHAssetChangeRequest creationRequestForAssetFromImage:image];
     } completionHandler:^(BOOL success, NSError * _Nullable error) {
-        dispatch_async(dispatch_get_main_queue(), ^{
-            [self showAlert:success ? @"تم حفظ الصورة بنجاح ✅" : @"فشل حفظ الصورة ❌"];
-        });
+        NSLog(@"📸 Image saved: %@", success ? @"YES" : @"NO");
     }];
 }
 
-%new
-- (void)saveVideoFromURL:(NSURL *)url {
+- (void)downloadVideoFromURL:(NSURL *)url {
+    if (!url) return;
+    NSData *videoData = [NSData dataWithContentsOfURL:url];
+    if (!videoData) return;
+    NSString *tempPath = [NSTemporaryDirectory() stringByAppendingPathComponent:@"downloaded_story.mov"];
+    [videoData writeToFile:tempPath atomically:YES];
     [[PHPhotoLibrary sharedPhotoLibrary] performChanges:^{
-        [PHAssetChangeRequest creationRequestForAssetFromVideoAtFileURL:url];
+        [PHAssetChangeRequest creationRequestForAssetFromVideoAtFileURL:[NSURL fileURLWithPath:tempPath]];
     } completionHandler:^(BOOL success, NSError * _Nullable error) {
-        dispatch_async(dispatch_get_main_queue(), ^{
-            [self showAlert:success ? @"تم حفظ الفيديو بنجاح ✅" : @"فشل حفظ الفيديو ❌"];
-        });
+        NSLog(@"🎬 Video saved: %@", success ? @"YES" : @"NO");
     }];
 }
 
-%new
-- (void)showAlert:(NSString *)message {
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"FileSaver"
-                                                                   message:message
-                                                            preferredStyle:UIAlertControllerStyleAlert];
-    [alert addAction:[UIAlertAction actionWithTitle:@"تم" style:UIAlertActionStyleDefault handler:nil]];
-    [[UIApplication sharedApplication].keyWindow.rootViewController presentViewController:alert animated:YES completion:nil];
-}
+@end
 
-%end
+%ctor {
+    [[FloatingDownloadButton sharedButton] checkVisibleContent];
+}
