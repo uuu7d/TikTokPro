@@ -54,11 +54,11 @@ jobs:
       - name: 🧩 Build Tweak
         run: |
           echo "🏗️ Building tweak using Theos..."
-          make clean && make package FINALPACKAGE=1
+          make package FINALPACKAGE=1
           echo "✅ Build completed successfully."
 
       - name: 📤 Upload deb package
         uses: actions/upload-artifact@v4
         with:
-          name: FuckMeIamHorny.dylib
-          path: packages/*.dylib
+          name: FuckMeIamHorny.deb
+          path: packages/*.deb
