@@ -1,4 +1,5 @@
-name: inject
+name: Inject Tweak into IPA
+
 on:
   workflow_dispatch:
 
@@ -7,27 +8,29 @@ jobs:
     runs-on: macos-latest
 
     steps:
-      - name: Checkout repo
+      - name: 📥 Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install dependencies
+      - name: 🧰 Install dependencies
         run: |
           brew update
           brew install ldid unzip zip
 
-      - name: Prepare workspace
-        run: mkdir -p artifacts tools work
+      - name: 📁 Prepare workspace
+        run: |
+          mkdir -p artifacts tools work
+          echo "✅ Workspace ready."
 
-      - name: Download prebuilt insert_dylib
+      - name: 📦 Download prebuilt insert_dylib
         run: |
           echo "📦 Downloading prebuilt insert_dylib..."
-          curl -L -o tools/insert_dylib https://github.com/Tyilo/insert_dylib/releases/download/v1.0/insert_dylib
+          curl -L -o tools/insert_dylib https://github.com/zhuowei/insert_dylib/releases/download/1.0/insert_dylib_macos_arm64
           chmod +x tools/insert_dylib
-          ./tools/insert_dylib --version || echo "✅ insert_dylib ready"
+          echo "✅ insert_dylib ready."
 
-      - name: Extract IPA
+      - name: 📦 Extract IPA
         run: |
-          echo "📦 Extracting IPA..."
+          echo "📂 Extracting IPA..."
           cd artifacts
           unzip -o App.ipa -d ../work/
           cd ../work
@@ -35,7 +38,7 @@ jobs:
           echo "APP_PATH=$APP_PATH" >> $GITHUB_ENV
           echo "✅ Found app at $APP_PATH"
 
-      - name: Inject tweak dylib
+      - name: 💉 Inject tweak dylib
         run: |
           echo "💉 Injecting tweak..."
           cd work
@@ -43,32 +46,32 @@ jobs:
           echo "App binary: $APP_BINARY"
           ../tools/insert_dylib --all-yes ../artifacts/Tweak.dylib "$APP_PATH/$APP_BINARY" "$APP_PATH/${APP_BINARY}_patched"
           mv "$APP_PATH/${APP_BINARY}_patched" "$APP_PATH/$APP_BINARY"
-          echo "✅ Injection done"
+          echo "✅ Injection done."
 
-      - name: Resign app binary
+      - name: 🔏 Re-sign app binary
         run: |
           echo "🔏 Re-signing app..."
           cd work
           APP_BINARY=$(basename "$APP_PATH" .app)
-          
-          # إزالة التوقيعات القديمة من التطبيق والمكتبات
+
+          # إزالة التوقيعات القديمة
           find "$APP_PATH" -name "_CodeSignature" -exec rm -rf {} +
           find "$APP_PATH" -name "CodeResources" -exec rm -rf {} +
-          
-          # توقيع المكتبة المحقونة + التطبيق نفسه
+
+          # توقيع التطبيق والمكتبة المحقونة
           ldid -S "$APP_PATH/$APP_BINARY"
-          ldid -S "$APP_PATH/../Tweak.dylib" || true
-          
+          ldid -S ../artifacts/Tweak.dylib || true
+
           echo "✅ Re-sign completed."
 
-      - name: Repack IPA
+      - name: 📦 Repack IPA
         run: |
           echo "📦 Repacking IPA..."
           cd work
           zip -r ../artifacts/App_patched_signed.ipa Payload
           echo "✅ Done! Saved as artifacts/App_patched_signed.ipa"
 
-      - name: Upload final IPA
+      - name: 🚀 Upload final IPA
         uses: actions/upload-artifact@v4
         with:
           name: App_patched_signed
