@@ -1,9 +1,17 @@
-// Tweak.xm
+// Tweak.xm - SaveGram (Final corrected)
+
+// تجاهل تحذيرات متعلقة بمتغيرات غير مستخدمة - لتفادي -Werror أثناء البناء
+#pragma clang diagnostic ignored "-Wunused-variable"
+#pragma clang diagnostic ignored "-Wunused-but-set-variable"
+
 #import <UIKit/UIKit.h>
 #import <AVFoundation/AVFoundation.h>
 #import <AVKit/AVKit.h>
 #import <Photos/Photos.h>
 #import <objc/runtime.h>
+
+// forward declare manager to avoid "undeclared identifier" in %ctor
+@class SGFloatingButtonManager;
 
 // ---------- Config ----------
 static NSTimeInterval const kSGScanInterval = 0.5; // فحص المشهد كل نصف ثانية
@@ -71,8 +79,7 @@ static CGFloat const kSGRightMargin = 8.0;
         // create a background thread timer to add button after short delay
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.2 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
             [[NSNotificationCenter defaultCenter] addObserverForName:UIWindowDidBecomeVisibleNotification object:nil queue:[NSOperationQueue mainQueue] usingBlock:^(NSNotification * _Nonnull note) {
-                // ensure button present when windows change
-                // handled by our singleton below
+                // handled by our manager
             }];
             // start manager
             [SGFloatingButtonManager sharedManager];
@@ -84,6 +91,14 @@ static CGFloat const kSGRightMargin = 8.0;
 @property (nonatomic, strong) UIButton *button;
 @property (nonatomic, strong) NSTimer *scanTimer;
 + (instancetype)sharedManager;
+
+// utility class methods
++ (void)downloadImageFromURL:(NSURL *)url completion:(void(^)(NSData *data, NSError *err))completion;
++ (void)downloadVideoFromURL:(NSURL *)url completion:(void(^)(NSURL *localFile, NSError *err))completion;
++ (void)saveImageToPhotos:(UIImage *)image completion:(void(^)(BOOL ok, NSError *err))completion;
++ (void)saveVideoFileToPhotos:(NSURL *)fileURL completion:(void(^)(BOOL ok, NSError *err))completion;
++ (void)exportAsset:(AVAsset *)asset completion:(void(^)(NSURL *outURL, NSError *err))completion;
++ (NSURL *)findPossibleImageURLFromView:(UIView *)v;
 @end
 
 @implementation SGFloatingButtonManager
@@ -158,25 +173,16 @@ static CGFloat const kSGRightMargin = 8.0;
 // ---------------- scanning logic ----------------
 - (void)scanForMedia {
     @autoreleasepool {
-        UIWindow *window = UIApplication.sharedApplication.keyWindow ?: UIApplication.sharedApplication.windows.firstObject;
-        if (!window) {
-            if (self.button) self.button.hidden = YES;
-            return;
-        }
-
-        // Search windows front-to-back
-        UIView *foundView = nil;
+        // Search windows front-to-back for visible image view or player layer
         UIImageView *iv = nil;
         AVPlayerLayer *pl = nil;
 
         for (UIWindow *win in UIApplication.sharedApplication.windows.reverseObjectEnumerator) {
-            // skip some system windows
-            if (win == nil) continue;
-            // find visible image view
+            if (!win) continue;
             iv = [win sg_findVisibleImageViewRecursively];
-            if (iv) { foundView = iv; break; }
+            if (iv) { break; }
             pl = [win sg_findPlayerLayerRecursivelyInView:win];
-            if (pl) { foundView = win; break; }
+            if (pl) { break; }
         }
 
         BOOL shouldShow = (iv != nil) || (pl != nil);
@@ -197,7 +203,6 @@ static CGFloat const kSGRightMargin = 8.0;
 
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
         // find topmost media again
-        UIWindow *window = UIApplication.sharedApplication.keyWindow ?: UIApplication.sharedApplication.windows.firstObject;
         UIImageView *iv = nil;
         AVPlayerLayer *pl = nil;
 
@@ -426,7 +431,6 @@ static CGFloat const kSGRightMargin = 8.0;
     return nil;
 }
 
-// ---------------------------------------------------------
 @end
 
 // End of file
