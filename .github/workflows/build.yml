@@ -1,64 +1,276 @@
-name: Build Theos Tweak
+#import <UIKit/UIKit.h>
+#import <AVFoundation/AVFoundation.h>
+#import <Photos/Photos.h>
+#import <objc/runtime.h>
 
-on:
-  push:
-    branches:
-      - main
-      - master
-  pull_request:
+#pragma mark - Helper
 
-jobs:
-  build:
-    runs-on: macos-latest
-    env:
-      THEOS: ${{ github.workspace }}/theos
+@interface FileSaverHelper : NSObject <UIGestureRecognizerDelegate>
++ (instancetype)shared;
+- (void)installLongPressIfNeeded;
+- (void)handleLongPress:(UILongPressGestureRecognizer *)g;
+@end
 
-    steps:
-      - name: 🔄 Checkout repository
-        uses: actions/checkout@v4
+@implementation FileSaverHelper
 
-      - name: ⚙️ Cache Theos
-        uses: actions/cache@v3
-        with:
-          path: ${{ github.workspace }}/theos
-          key: theos-cache-${{ runner.os }}
++ (instancetype)shared {
+    static FileSaverHelper *s;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        s = [FileSaverHelper new];
+    });
+    return s;
+}
 
-      - name: 🛠️ Install dependencies
-        run: |
-          brew install dpkg ldid make git perl
+- (instancetype)init {
+    if ((self = [super init])) {
+        [[NSNotificationCenter defaultCenter] addObserver:self
+                                                 selector:@selector(applicationDidBecomeActive:)
+                                                     name:UIApplicationDidBecomeActiveNotification
+                                                   object:nil];
+    }
+    return self;
+}
 
-      - name: 📦 Setup Theos and SDK 16.5
-        run: |
-          mkdir -p $THEOS
-          echo "export THEOS=$THEOS" >> $HOME/.bash_profile
+- (void)applicationDidBecomeActive:(NSNotification *)n {
+    // re-install after app becomes active (in case windows changed)
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [self installLongPressIfNeeded];
+    });
+}
 
-          if [ ! -d "$THEOS/.git" ]; then
-            echo "🔽 Cloning Theos..."
-            git clone --recursive https://github.com/theos/theos.git $THEOS
-          else
-            echo "✅ Theos exists, skipping."
-          fi
+- (void)installLongPressIfNeeded {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        @try {
+            UIWindow *keyWindow = UIApplication.sharedApplication.keyWindow ?: UIApplication.sharedApplication.windows.firstObject;
+            if (!keyWindow) return;
 
-          # تحميل SDK 16.5 إذا لم يكن موجودًا
-          if [ ! -d "$THEOS/sdks/iPhoneOS16.5.sdk" ]; then
-            echo "🔽 Downloading iOS 16.5 SDK..."
-            mkdir -p $THEOS/sdks
-            curl -L -o $THEOS/sdks/iPhoneOS16.5.sdk.tar.xz https://github.com/theos/sdks/releases/download/master-146e41f/iPhoneOS16.5.sdk.tar.xz
-            tar -xJf $THEOS/sdks/iPhoneOS16.5.sdk.tar.xz -C $THEOS/sdks
-          else
-            echo "✅ iOS 16.5 SDK already exists."
-          fi
+            // avoid adding multiple recognizers
+            for (UIGestureRecognizer *g in keyWindow.gestureRecognizers ?: @[]) {
+                if ([g isKindOfClass:[UILongPressGestureRecognizer class]] &&
+                    g.delegate == (id)self) {
+                    return;
+                }
+            }
 
-          echo "✅ Theos and SDK ready."
+            // add to keyWindow and also to rootVC.view
+            UILongPressGestureRecognizer *longPress = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(handleLongPress:)];
+            longPress.minimumPressDuration = 0.7;
+            longPress.numberOfTouchesRequired = 1;
+            longPress.cancelsTouchesInView = NO;
+            longPress.delegate = (id)self;
 
-      - name: 🧩 Build Tweak
-        run: |
-          echo "🏗️ Building tweak using Theos..."
-          make clean && make package FINALPACKAGE=1
-          echo "✅ Build completed successfully."
+            [keyWindow addGestureRecognizer:longPress];
 
-      - name: 📤 Upload deb package
-        uses: actions/upload-artifact@v4
-        with:
-          name: FuckMeIamHorny.dylib
-          path: packages/*.dylib
+            UIViewController *root = UIApplication.sharedApplication.keyWindow.rootViewController;
+            if (root && root.view && root.view != keyWindow) {
+                // also attach to root view if different
+                for (UIGestureRecognizer *g in root.view.gestureRecognizers ?: @[]) {
+                    if ([g isKindOfClass:[UILongPressGestureRecognizer class]] &&
+                        g.delegate == (id)self) {
+                        return;
+                    }
+                }
+                [root.view addGestureRecognizer:longPress];
+            }
+        } @catch (NSException *ex) {
+            // ignore
+        }
+    });
+}
+
+#pragma mark - Gesture Delegate (allow simultaneous)
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherGestureRecognizer {
+    return YES;
+}
+
+#pragma mark - Handler
+
+- (void)handleLongPress:(UILongPressGestureRecognizer *)g {
+    if (g.state != UIGestureRecognizerStateBegan) return;
+
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        // Find root view
+        dispatch_async(dispatch_get_main_queue(), ^{
+            UIView *rootView = UIApplication.sharedApplication.keyWindow.rootViewController.view ?: UIApplication.sharedApplication.keyWindow;
+            NSURL *videoURL = [self findVideoURLInView:rootView];
+            UIImage *image = [self findImageInView:rootView];
+
+            if (videoURL) {
+                [self saveVideoFromURL:videoURL];
+            } else if (image) {
+                [self saveImage:image];
+            } else {
+                [self showAlertOnMain:@"❌ لم يتم العثور على صورة أو فيديو"];
+            }
+        });
+    });
+}
+
+#pragma mark - Find media
+
+- (UIImage *)findImageInView:(UIView *)view {
+    if (!view) return nil;
+    if ([view isKindOfClass:[UIImageView class]]) {
+        UIImageView *iv = (UIImageView *)view;
+        if (iv.image) return iv.image;
+    }
+    for (UIView *sub in view.subviews) {
+        UIImage *img = [self findImageInView:sub];
+        if (img) return img;
+    }
+    return nil;
+}
+
+- (NSURL *)findVideoURLInView:(UIView *)view {
+    if (!view) return nil;
+
+    // 1) AVPlayerLayer on view.layer
+    if ([view.layer isKindOfClass:[AVPlayerLayer class]]) {
+        AVPlayerLayer *layer = (AVPlayerLayer *)view.layer;
+        AVPlayer *player = layer.player;
+        NSURL *u = [self extractURLFromPlayer:player];
+        if (u) return u;
+    }
+
+    // 2) Try if view or its viewController has a player property
+    @try {
+        id maybePlayer = nil;
+        // check common KVC keys on view
+        NSArray *keys = @[@"player", @"avPlayer", @"playerLayer", @"videoPlayer", @"_player"];
+        for (NSString *k in keys) {
+            if ([view respondsToSelector:NSSelectorFromString(k)]) {
+                @try { maybePlayer = [view valueForKey:k]; } @catch (NSException *e) { maybePlayer = nil; }
+                if ([maybePlayer isKindOfClass:[AVPlayer class]]) {
+                    NSURL *u = [self extractURLFromPlayer:(AVPlayer *)maybePlayer];
+                    if (u) return u;
+                }
+            }
+        }
+    } @catch (NSException *ex) {}
+
+    // 3) Walk view controller responders (some players are on controllers)
+    UIResponder *r = view;
+    while (r) {
+        if ([NSStringFromClass([r class]) containsString:@"Player"] || [NSStringFromClass([r class]) containsString:@"Story"] || [NSStringFromClass([r class]) containsString:@"Video"]) {
+            @try {
+                id pv = nil;
+                if ([r respondsToSelector:NSSelectorFromString(@"player")]) {
+                    @try { pv = [r valueForKey:@"player"]; } @catch (NSException *e) { pv = nil; }
+                    if ([pv isKindOfClass:[AVPlayer class]]) {
+                        NSURL *u = [self extractURLFromPlayer:(AVPlayer *)pv];
+                        if (u) return u;
+                    }
+                }
+            } @catch (NSException *e) {}
+        }
+        r = [r nextResponder];
+    }
+
+    // 4) Recurse subviews
+    for (UIView *sub in view.subviews) {
+        NSURL *u = [self findVideoURLInView:sub];
+        if (u) return u;
+    }
+
+    return nil;
+}
+
+- (NSURL *)extractURLFromPlayer:(AVPlayer *)player {
+    if (!player) return nil;
+    AVPlayerItem *item = player.currentItem;
+    if (!item) return nil;
+
+    // direct asset URL
+    if ([item.asset isKindOfClass:[AVURLAsset class]]) {
+        return ((AVURLAsset *)item.asset).URL;
+    }
+
+    // try KVC on item and asset (best-effort)
+    NSArray *keys = @[@"asset", @"_asset", @"URL", @"_URL", @"url"];
+    for (NSString *k in keys) {
+        id v = nil;
+        @try { v = [item valueForKey:k]; } @catch (...) { v = nil; }
+        if ([v isKindOfClass:[NSURL class]]) return v;
+        if ([v isKindOfClass:[NSString class]]) return [NSURL URLWithString:v];
+    }
+
+    // try player.currentItem's tracks for segments (rare)
+    @try {
+        AVAsset *asset = item.asset;
+        if (asset && [asset respondsToSelector:@selector(URL)]) {
+            id possible = nil;
+            @try { possible = [asset valueForKey:@"URL"]; } @catch (...) { possible = nil; }
+            if ([possible isKindOfClass:[NSURL class]]) return possible;
+            if ([possible isKindOfClass:[NSString class]]) return [NSURL URLWithString:possible];
+        }
+    } @catch (...) {}
+
+    return nil;
+}
+
+#pragma mark - Save
+
+- (void)saveImage:(UIImage *)image {
+    if (!image) { [self showAlertOnMain:@"❌ لا توجد صورة للحفظ"]; return; }
+    [[PHPhotoLibrary sharedPhotoLibrary] performChanges:^{
+        [PHAssetChangeRequest creationRequestForAssetFromImage:image];
+    } completionHandler:^(BOOL success, NSError * _Nullable error) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self showAlertOnMain: success ? @"✅ تم حفظ الصورة" : [NSString stringWithFormat:@"❌ فشل حفظ الصورة: %@", error.localizedDescription ?: @"خطأ"]];
+        });
+    }];
+}
+
+- (void)saveVideoFromURL:(NSURL *)url {
+    if (!url) { [self showAlertOnMain:@"❌ لا يوجد فيديو للحفظ"]; return; }
+
+    // If URL is remote, try to download first
+    if (![url isFileURL]) {
+        // download synchronously on background queue (best-effort)
+        NSData *d = [NSData dataWithContentsOfURL:url];
+        if (!d) { [self showAlertOnMain:@"❌ فشل تنزيل الفيديو"]; return; }
+        NSString *tmp = [NSTemporaryDirectory() stringByAppendingPathComponent:[NSUUID UUID].UUIDString];
+        tmp = [tmp stringByAppendingPathExtension:@"mp4"];
+        [d writeToFile:tmp atomically:YES];
+        url = [NSURL fileURLWithPath:tmp];
+    }
+
+    [[PHPhotoLibrary sharedPhotoLibrary] performChanges:^{
+        [PHAssetChangeRequest creationRequestForAssetFromVideoAtFileURL:url];
+    } completionHandler:^(BOOL success, NSError * _Nullable error) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self showAlertOnMain: success ? @"✅ تم حفظ الفيديو" : [NSString stringWithFormat:@"❌ فشل حفظ الفيديو: %@", error.localizedDescription ?: @"خطأ"]];
+        });
+    }];
+}
+
+#pragma mark - Alerts
+
+- (void)showAlertOnMain:(NSString *)msg {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        UIViewController *root = UIApplication.sharedApplication.keyWindow.rootViewController;
+        if (!root) return;
+        UIAlertController *ac = [UIAlertController alertControllerWithTitle:@"FileSaver" message:msg preferredStyle:UIAlertControllerStyleAlert];
+        [ac addAction:[UIAlertAction actionWithTitle:@"حسناً" style:UIAlertActionStyleDefault handler:nil]];
+        [root presentViewController:ac animated:YES completion:nil];
+    });
+}
+
+@end
+
+#pragma mark - Theos ctor: install gesture
+
+%ctor {
+    @autoreleasepool {
+        // small delay to allow app to set up windows
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.3 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            [[FileSaverHelper shared] installLongPressIfNeeded];
+        });
+        // also ensure install on future become active
+        [[NSNotificationCenter defaultCenter] addObserver:[FileSaverHelper shared]
+                                                 selector:@selector(installLongPressIfNeeded)
+                                                     name:UIApplicationDidBecomeActiveNotification
+                                                   object:nil];
+    }
+}
