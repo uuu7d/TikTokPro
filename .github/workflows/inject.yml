@@ -1,98 +1,38 @@
-name: 🏗️ Build & Inject Tweak (using optool)
+- name: 💉 Inject tweak(s) using optool
+  run: |
+    echo "💉 Injecting tweak(s) using optool..."
 
-on:
-  push:
-    branches:
-      - main
-      - master
-  pull_request:
+    mkdir -p work
+    cd work
 
-jobs:
-  build:
-    runs-on: macos-latest
-    env:
-      THEOS: ${{ github.workspace }}/theos
-      APP_PATH: Payload/Shuggr.app
+    echo "📦 Extracting IPA..."
+    cp ../artifacts/App.ipa . || true
+    unzip -o App.ipa >/dev/null 2>&1 || echo "⚠️ No App.ipa found, skipping unzip (upload it manually in artifacts/)"
 
-    steps:
-      - name: 🔄 Checkout repository
-        uses: actions/checkout@v4
+    APP_BINARY=$(basename "$APP_PATH" .app)
+    echo "🧠 App binary detected: $APP_BINARY"
 
-      - name: ⚙️ Install dependencies
-        run: |
-          brew install dpkg ldid make git perl
-          echo "✅ Base dependencies installed."
+    echo "⬇️ Downloading optool binary..."
+    mkdir -p ../tools
+    curl -L -o ../tools/optool https://github.com/hikari-no-yume/optool-precompiled/releases/download/1.0/optool-macos-arm64
+    chmod +x ../tools/optool
 
-      - name: 📦 Setup Theos and SDK 16.5
-        run: |
-          mkdir -p $THEOS
-          echo "export THEOS=$THEOS" >> $HOME/.bash_profile
+    if [ ! -f "../tools/optool" ]; then
+      echo "❌ optool download failed!"
+      exit 1
+    fi
 
-          if [ ! -d "$THEOS/.git" ]; then
-            echo "🔽 Cloning Theos..."
-            git clone --recursive https://github.com/theos/theos.git $THEOS
-          else
-            echo "✅ Theos already exists."
-          fi
+    for dylib in ../artifacts/*.dylib; do
+      name=$(basename "$dylib")
+      echo "➡️ Injecting $name..."
+      cp "$dylib" "$APP_PATH/$name"
+      ../tools/optool install -c load -p "@executable_path/$name" -t "$APP_PATH/$APP_BINARY"
+    done
 
-          # Download iOS SDK 16.5 if missing
-          if [ ! -d "$THEOS/sdks/iPhoneOS16.5.sdk" ]; then
-            echo "📥 Downloading iOS 16.5 SDK..."
-            mkdir -p $THEOS/sdks
-            curl -L -o $THEOS/sdks/iPhoneOS16.5.sdk.tar.xz https://github.com/theos/sdks/releases/download/master-146e41f/iPhoneOS16.5.sdk.tar.xz
-            tar -xJf $THEOS/sdks/iPhoneOS16.5.sdk.tar.xz -C $THEOS/sdks
-          else
-            echo "✅ iOS 16.5 SDK already installed."
-          fi
+    echo "✅ All dylibs injected successfully!"
 
-      - name: 🧩 Build tweak (.dylib only)
-        run: |
-          echo "🏗️ Building tweak..."
-          make clean
-          make FINALPACKAGE=1
-          echo "✅ Build completed successfully."
-          mkdir -p artifacts
-          find .theos/obj -name "*.dylib" -exec cp {} artifacts/ \;
-
-      - name: 💉 Inject tweak(s) using optool
-        run: |
-          echo "💉 Injecting tweak(s) using optool..."
-
-          mkdir -p work
-          cd work
-
-          echo "📦 Extracting IPA..."
-          cp ../artifacts/App.ipa . || true
-          unzip -o App.ipa >/dev/null 2>&1 || echo "⚠️ No App.ipa found, skipping unzip (you can upload it manually in artifacts/)"
-
-          APP_BINARY=$(basename "$APP_PATH" .app)
-          echo "🧠 App binary detected: $APP_BINARY"
-
-          echo "🛠 Installing optool..."
-          brew install --HEAD https://raw.githubusercontent.com/alexzielenski/optool/master/Formula/optool.rb || true
-
-          if ! command -v optool &> /dev/null; then
-            echo "❌ optool installation failed!"
-            exit 1
-          fi
-
-          for dylib in ../artifacts/*.dylib; do
-            name=$(basename "$dylib")
-            echo "➡️ Injecting $name..."
-            cp "$dylib" "$APP_PATH/$name"
-            optool install -c load -p "@executable_path/$name" -t "$APP_PATH/$APP_BINARY"
-          done
-
-          echo "✅ All dylibs injected successfully!"
-
-          echo "📦 Repackaging patched IPA..."
-          cd ..
-          zip -r InjectedApp.ipa Payload >/dev/null 2>&1
-          mkdir -p output
-          mv InjectedApp.ipa output/
-
-      - name: 📤 Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: InjectedApp.ipa
-          path: output/InjectedApp.ipa
+    echo "📦 Repackaging patched IPA..."
+    cd ..
+    zip -r InjectedApp.ipa Payload >/dev/null 2>&1
+    mkdir -p output
+    mv InjectedApp.ipa output/
