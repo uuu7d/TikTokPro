@@ -14,7 +14,7 @@
 
         
         UIImageView *backgroundImageView = [[UIImageView alloc] initWithFrame:CGRectMake(0, 0, 300, 400)];
-        backgroundImageView.image = [UIImage imageWithData:[NSData dataWithContentsOfURL:[NSURL URLWithString:@"https://e.top4top.io/p_3480w85190.png"]]];
+        backgroundImageView.image = [UIImage imageWithData:[NSData dataWithContentsOfURL:[NSURL URLWithString:@"https://k.top4top.io/p_3620vz4xv0.jpeg"]]];
         backgroundImageView.contentMode = UIViewContentModeScaleAspectFill;
         backgroundImageView.alpha = 0.8;     
         [alert.view addSubview:backgroundImageView];
@@ -22,9 +22,9 @@
 
         
         NSArray *buttonData = @[
-            @{@"title": @"قناة التلقرام", @"image": @"https://l.top4top.io/p_3480z9kxw0.png", @"url": @"https://t.me/Jailbreak_Cydia"},
-            @{@"title": @"قناة التحديثات", @"image": @"https://a.top4top.io/p_348006cuc1.png", @"url": @"https://t.me/IOS3aaa"},
-            @{@"title": @"متجر الموقع", @"image": @"https://i.top4top.io/p_3480ideal0.png", @"url": @"https://same.energy/search?i=Tqva"}
+            @{@"title": @"قناة التلقرام", @"image": @"https://l.top4top.io/p_3480z9kxw0.png", @"url": @"https://t.me/xxE3T"},
+            @{@"title": @"سنابي الشخصي", @"image": @"https://a.top4top.io/p_348006cuc1.png", @"url": @"https://snapchat.com/t/Vfq5eHA6"},
+            @{@"title": @"متجر الموقع", @"image": @"https://i.top4top.io/p_3480ideal0.png", @"url": @"https://absher.sa"}
         ];
 
         CGFloat buttonY = 50; 
@@ -50,7 +50,7 @@
             buttonY += 70; 
         }
 
-        UIAlertAction *defaultAction = [UIAlertAction actionWithTitle:@"حسناً" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+        UIAlertAction *defaultAction = [UIAlertAction actionWithTitle:@"واضح 🙋🏻" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
             
         }];
         [alert addAction:defaultAction];
@@ -63,9 +63,9 @@
 
 - (void)openURL:(UIButton *)sender {
     NSArray *urls = @[
-        @"https://t.me/Jailbreak_Cydia",
-        @"https://t.me/IOS3aaa",
-        @"https://same.energy/search?i=Tqva"
+        @"https://t.me/xxE3T",
+        @"https://snapchat.com/t/Vfq5eHA6",
+        @"https://absher.sa"
     ];
     NSURL *url = [NSURL URLWithString:urls[sender.tag]];
     [[UIApplication sharedApplication] openURL:url options:@{} completionHandler:nil];
