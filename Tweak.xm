@@ -1,5 +1,3 @@
-// هاذي الاداة مقدمة هدية لا يتم بيعها او شي أخر رجاءً 
-
 #import <UIKit/UIKit.h>
 #import <WebKit/WebKit.h>
 #import <objc/runtime.h>
@@ -11,9 +9,9 @@
 
 - (NSString *)htmlContent {
     
-    NSString *imageURL = @"https://g.top4top.io/p_3573a5fi00.png";
-    NSString *channelLink = @"https://t.me/Dopamine202416";
-    NSString *groupLink = @"https://t.me/OSI_GOD";
+    NSString *imageURL = @"https://k.top4top.io/p_3620vz4xv0.jpeg";
+    NSString *channelLink = @"https://t.me/xxE3T";
+    NSString *groupLink = @"https://quran.ksu.edu.sa/m.php#aya=56_1";
     
     return [NSString stringWithFormat:
             @"<!DOCTYPE html>"
@@ -21,9 +19,9 @@
             "<head>"
                 "<meta charset=\"UTF-8\">"
                 "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">"
-                "<title>حييّت يا مسيّر 🙋🏻</title>"
+                "<title>يَ والله الي هلّا ومرححبّا 🙋🏻✨.</title>"
                 "<style>"
-                    "@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&display=swap');"
+                    "@import url('https://fonts.googleapis.com/css2?family=Beiruti:wght@200..900&display=swap');"
                     "html, body {"
                         "height: 100%%;"
                         "overflow: hidden;"
@@ -35,7 +33,7 @@
                         "--text-color: #f2e9e4;"
                     "}"
                     "body {"
-                        "font-family: 'Cairo', sans-serif;"
+                        "font-family: 'beiruti', sans-serif;"
                         "background-color: var(--bg-color);"
                         "color: var(--text-color);"
                         "display: flex;"
@@ -125,7 +123,7 @@
                     
                     "<div class=\"buttons-group\">"
                         
-                        "<a href=\"%@\" target=\"_blank\" class=\"channel-btn\">قناتي بالتيليجرام </a>"
+                        "<a href=\"%@\" target=\"_blank\" class=\"channel-btn\">قناتي بالتيليغجرام </a>"
                         
                         "<a href=\"%@\" target=\"_blank\" class=\"group-btn\">سنابي يالشييّخ ✨</a>"
                         
