@@ -6,7 +6,7 @@ include $(THEOS)/makefiles/common.mk
 
 TWEAK_NAME = VCAM
 VCAM_FILES = VCAM.xm VCAMCore.xm VCAMUI.xm VCAMRecorder.xm
-VCAM_FRAMEWORKS = UIKit AVFoundation CoreAudio AudioToolbox
+VCAM_FRAMEWORKS = UIKit AVFoundation AudioToolbox
 
 # تنظيف الملفات المؤقتة قبل البناء
 clean::
