@@ -2,9 +2,9 @@ name: Build VCAM (Theos)
 
 on:
   push:
-    branches: [ master ]
+    branches: [ main ]
   pull_request:
-    branches: [ master ]
+    branches: [ main ]
 
 jobs:
   build:
@@ -15,21 +15,16 @@ jobs:
       LD_SHARED_CACHE_ELIGIBLE: "NO"
 
     steps:
-      - name: Checkout repository (with submodules)
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
           submodules: recursive
           fetch-depth: 0
 
-      - name: Ensure submodules initialized (safe)
+      - name: Ensure submodules initialized
         run: git submodule update --init --recursive
 
-      - name: Print environment
-        run: |
-          echo "THEOS = $THEOS"
-          echo "SDKVERSION = $SDKVERSION"
-
-      - name: Install Homebrew tools (optional)
+      - name: Install Homebrew tools
         run: |
           brew update || true
           brew install ldid || true
@@ -39,21 +34,10 @@ jobs:
         run: |
           export THEOS="${THEOS}"
           export PATH="${THEOS}/bin:$PATH"
-          echo "::add-mask::${THEOS}"
           export LD_SHARED_CACHE_ELIGIBLE=NO
           echo "LD_SHARED_CACHE_ELIGIBLE=$LD_SHARED_CACHE_ELIGIBLE"
 
-      - name: Build tweak using Theos (optional deb)
-        working-directory: ${{ github.workspace }}
-        run: |
-          set -e
-          export THEOS="${THEOS}"
-          export PATH="${THEOS}/bin:$PATH"
-          export LD_SHARED_CACHE_ELIGIBLE=NO
-          echo "🏗️ Building tweak package using Theos..."
-          make clean || true
-
-      - name: Build dylib using Theos
+      - name: Build VCAM dylib using Theos
         working-directory: ${{ github.workspace }}
         run: |
           set -e
@@ -64,3 +48,9 @@ jobs:
           make clean || true
           make
           echo "✅ Build completed successfully."
+
+      - name: Upload VCAM dylib as artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: VCAM-dylib
+          path: ${{ github.workspace }}/obj/arm64/VCAM.dylib
