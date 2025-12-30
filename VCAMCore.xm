@@ -6,7 +6,7 @@
 
 #pragma mark - Globals
 
-static BOOL vcamEnabled = NO;
+// إزالة تعريف vcamEnabled هنا لأنه غير مستخدم في Core
 static BOOL vcamMirror = NO;
 
 static NSString *vcamVideoPath = @"/var/mobile/Library/Caches/vcam.mov";
