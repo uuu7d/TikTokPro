@@ -30,12 +30,6 @@ jobs:
           echo "THEOS = $THEOS"
           echo "SDKVERSION = $SDKVERSION"
 
-      - name: Install Homebrew tools (optional)
-        run: |
-          brew update || true
-          brew install ldid || true
-          brew install dpkg || true
-
       - name: Export THEOS and helpers
         run: |
           export THEOS="${THEOS}"
