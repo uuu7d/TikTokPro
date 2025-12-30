@@ -1,6 +1,6 @@
 #import <Foundation/Foundation.h>
-#import <AVFoundation/AVFoundation.h>
 #import <UIKit/UIKit.h>
+#import <AVFoundation/AVFoundation.h>
 
 extern BOOL vcamEnabled;
 extern BOOL vcamMirror;
