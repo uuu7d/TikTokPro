@@ -27,9 +27,8 @@ include $(THEOS_MAKE_PATH)/tweak.mk
 #--------------------------------------
 after-all::
 	@echo "📦 Creating fat dylib..."
-	@find .theos/obj -name "VCAM.dylib"
 	lipo -create \
-		.theos/obj/arm64/VCAM.dylib \
-		.theos/obj/arm64e/VCAM.dylib \
+		.theos/obj/debug/arm64/VCAM.dylib \
+		.theos/obj/debug/arm64e/VCAM.dylib \
 		-output .theos/obj/VCAM-fat.dylib
 	@echo "✅ Fat dylib created at .theos/obj/VCAM-fat.dylib"
