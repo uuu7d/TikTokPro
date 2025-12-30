@@ -1,4 +1,4 @@
-name: Build VCAMs Fat Dylib
+name: Build VCAM Fat Dylib
 
 on:
   push:
