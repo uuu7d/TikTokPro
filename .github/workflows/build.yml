@@ -1,4 +1,4 @@
-name: Build VCAM (Theos)
+name: Build VCAM Fat dylib
 
 on:
   push:
@@ -22,7 +22,7 @@ jobs:
           submodules: recursive
           fetch-depth: 0
 
-      - name: Ensure submodules initialized (safe)
+      - name: Ensure submodules initialized
         run: git submodule update --init --recursive
 
       - name: Print environment
@@ -30,7 +30,7 @@ jobs:
           echo "THEOS = $THEOS"
           echo "SDKVERSION = $SDKVERSION"
 
-      - name: Install Homebrew tools (optional)
+      - name: Install Homebrew tools
         run: |
           brew update || true
           brew install ldid || true
@@ -42,30 +42,29 @@ jobs:
           export PATH="${THEOS}/bin:$PATH"
           export LD_SHARED_CACHE_ELIGIBLE=NO
 
-      - name: Build tweak using Theos
+      - name: Build VCAM dylibs
         working-directory: ${{ github.workspace }}
         run: |
           set -e
           export THEOS="${THEOS}"
           export PATH="${THEOS}/bin:$PATH"
           export LD_SHARED_CACHE_ELIGIBLE=NO
-          echo "🏗️ Building VCAM dylib using Theos..."
+          echo "🏗️ Building VCAM for arm64..."
           make clean || true
-          make
-
-      - name: Create fat dylib
-        working-directory: ${{ github.workspace }}
-        run: |
-          echo "🏗️ Creating fat dylib for VCAM..."
+          make ARCHS=arm64
+          echo "🏗️ Building VCAM for arm64e..."
+          make clean || true
+          make ARCHS=arm64e
+          echo "📦 Creating fat dylib..."
           lipo -create \
-            .theos/obj/arm64/VCAM.dylib \
-            .theos/obj/arm64e/VCAM.dylib \
-            -output .theos/obj/VCAM-fat.dylib
-          echo "✅ Fat dylib created at .theos/obj/VCAM-fat.dylib"
+            $THEOS/obj/arm64/VCAM.dylib \
+            $THEOS/obj/arm64e/VCAM.dylib \
+            -output $THEOS/obj/VCAM-fat.dylib
+          echo "✅ Fat dylib created at $THEOS/obj/VCAM-fat.dylib"
 
       - name: Upload fat dylib as artifact
         uses: actions/upload-artifact@v4
         with:
-          name: VCAM-dylib
+          name: VCAM-fat-dylib
           path: ${{ github.workspace }}/.theos/obj/VCAM-fat.dylib
-          if-no-files-found: warn
+          if-no-files-found: error
