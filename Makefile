@@ -5,11 +5,17 @@ THEOS_PACKAGE_SCHEME = rootless
 include $(THEOS)/makefiles/common.mk
 
 TWEAK_NAME = VCAM
-VCAM_FILES = VCAM.xm VCAMCore.xm VCAMUI.xm VCAMRecorder.xm
-VCAM_FRAMEWORKS = UIKit AVFoundation AudioToolbox
 
-# تنظيف الملفات المؤقتة قبل البناء
-clean::
-    rm -rf $(THEOS_OBJ_DIR)
+VCAM_FILES = \
+    VCAM.xm \
+    VCAMCore.xm \
+    VCAMUI.xm \
+    VCAMRecorder.xm \
+    VCAMGlobals.m
+
+VCAM_FRAMEWORKS = UIKit AVFoundation CoreGraphics CoreAudio AudioToolbox
+
+# هذا السطر لمنع Theos من محاولة إنشاء deb
+TWEAK_CFLAGS = -fobjc-arc
 
 include $(THEOS_MAKE_PATH)/tweak.mk
