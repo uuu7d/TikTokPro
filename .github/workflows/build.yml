@@ -12,7 +12,6 @@ jobs:
     runs-on: macos-latest
     env:
       THEOS: ${{ github.workspace }}/theos
-      SDKVERSION: 16.5
       LD_SHARED_CACHE_ELIGIBLE: "NO"
 
     steps:
@@ -53,8 +52,6 @@ jobs:
           export LD_SHARED_CACHE_ELIGIBLE=NO
           echo "🏗️ Building tweak package using Theos..."
           make clean || true
-          # إذا لا تريد .deb يمكن حذف السطر التالي:
-          make package FINALPACKAGE=1 || true
 
       - name: Build dylib using Theos
         working-directory: ${{ github.workspace }}
