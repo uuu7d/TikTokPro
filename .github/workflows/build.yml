@@ -1,64 +1,69 @@
-name: Build Theos Tweak
+name: Build VCAM (Theos)
 
 on:
   push:
-    branches:
-      - main
-      - master
+    branches: [ main ]
   pull_request:
+    branches: [ main ]
 
 jobs:
   build:
+    name: Build on macOS
     runs-on: macos-latest
     env:
       THEOS: ${{ github.workspace }}/theos
+      SDKVERSION: 16.5
+      LD_SHARED_CACHE_ELIGIBLE: "NO"
 
     steps:
-      - name: 🔄 Checkout repository
+      - name: Checkout repository (with submodules)
         uses: actions/checkout@v4
-
-      - name: ⚙️ Cache Theos
-        uses: actions/cache@v3
         with:
-          path: ${{ github.workspace }}/theos
-          key: theos-cache-${{ runner.os }}
+          submodules: recursive
+          fetch-depth: 0
 
-      - name: 🛠️ Install dependencies
+      - name: Ensure submodules initialized (safe)
+        run: git submodule update --init --recursive
+
+      - name: Print environment
         run: |
-          brew install dpkg ldid make git perl
+          echo "THEOS = $THEOS"
+          echo "SDKVERSION = $SDKVERSION"
 
-      - name: 📦 Setup Theos and SDK 16.5
+      - name: Install Homebrew tools (optional)
         run: |
-          mkdir -p $THEOS
-          echo "export THEOS=$THEOS" >> $HOME/.bash_profile
+          brew update || true
+          brew install ldid || true
+          brew install dpkg || true
 
-          if [ ! -d "$THEOS/.git" ]; then
-            echo "🔽 Cloning Theos..."
-            git clone --recursive https://github.com/theos/theos.git $THEOS
-          else
-            echo "✅ Theos exists, skipping."
-          fi
-
-          # تحميل SDK 16.5 إذا لم يكن موجودًا
-          if [ ! -d "$THEOS/sdks/iPhoneOS16.5.sdk" ]; then
-            echo "🔽 Downloading iOS 16.5 SDK..."
-            mkdir -p $THEOS/sdks
-            curl -L -o $THEOS/sdks/iPhoneOS16.5.sdk.tar.xz https://github.com/theos/sdks/releases/download/master-146e41f/iPhoneOS16.5.sdk.tar.xz
-            tar -xJf $THEOS/sdks/iPhoneOS16.5.sdk.tar.xz -C $THEOS/sdks
-          else
-            echo "✅ iOS 16.5 SDK already exists."
-          fi
-
-          echo "✅ Theos and SDK ready."
-
-      - name: 🧩 Build Tweak
+      - name: Export THEOS and helpers
         run: |
-          echo "🏗️ Building tweak using Theos..."
-          make package FINALPACKAGE=1
+          export THEOS="${THEOS}"
+          export PATH="${THEOS}/bin:$PATH"
+          echo "::add-mask::${THEOS}"
+          export LD_SHARED_CACHE_ELIGIBLE=NO
+          echo "LD_SHARED_CACHE_ELIGIBLE=$LD_SHARED_CACHE_ELIGIBLE"
+
+      - name: Build tweak using Theos (optional deb)
+        working-directory: ${{ github.workspace }}
+        run: |
+          set -e
+          export THEOS="${THEOS}"
+          export PATH="${THEOS}/bin:$PATH"
+          export LD_SHARED_CACHE_ELIGIBLE=NO
+          echo "🏗️ Building tweak package using Theos..."
+          make clean || true
+          # إذا لا تريد .deb يمكن حذف السطر التالي:
+          make package FINALPACKAGE=1 || true
+
+      - name: Build dylib using Theos
+        working-directory: ${{ github.workspace }}
+        run: |
+          set -e
+          export THEOS="${THEOS}"
+          export PATH="${THEOS}/bin:$PATH"
+          export LD_SHARED_CACHE_ELIGIBLE=NO
+          echo "🏗️ Building VCAM dylib using Theos..."
+          make clean || true
+          make
           echo "✅ Build completed successfully."
-
-      - name: 📤 Upload deb package
-        uses: actions/upload-artifact@v4
-        with:
-          name: FuckMeIamHorny.deb
-          path: packages/*.deb
