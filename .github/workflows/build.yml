@@ -1,63 +1,63 @@
-name: Build VCAM Fat Dylib
+name: Build Theos Tweak (dylib)
 
 on:
   push:
-    branches: [ master ]
+    branches:
+      - main
+      - master
   pull_request:
-    branches: [ master ]
 
 jobs:
   build:
-    name: Build on macOS
     runs-on: macos-latest
     env:
-      SDKVERSION: 18.0
+      THEOS: ${{ github.workspace }}/theos
+      SDKVERSION: 16.5
       LD_SHARED_CACHE_ELIGIBLE: "NO"
 
     steps:
-      - name: Checkout repository
+      - name: 🔄 Checkout repository
         uses: actions/checkout@v4
-        with:
-          submodules: recursive
 
-      - name: Install Homebrew dependencies
+      - name: ⚙️ Cache Theos
+        uses: actions/cache@v3
+        with:
+          path: ${{ github.workspace }}/theos
+          key: theos-cache-${{ runner.os }}
+
+      - name: 🛠️ Install dependencies
         run: |
           brew update || true
-          brew install ldid dpkg git
+          brew install dpkg ldid make git perl
 
-      - name: Download Theos
+      - name: 📦 Setup Theos and SDK 16.5
         run: |
-          git clone --depth 1 https://github.com/theos/theos.git $GITHUB_WORKSPACE/theos
-          export THEOS="$GITHUB_WORKSPACE/theos"
-          echo "THEOS=$THEOS"
+          if [ ! -d "$THEOS" ]; then
+            git clone --recursive https://github.com/theos/theos.git $THEOS
+          fi
 
-      - name: Build arm64 and arm64e dylib
+          if [ ! -d "$THEOS/sdks/iPhoneOS16.5.sdk" ]; then
+            mkdir -p $THEOS/sdks
+            curl -L -o $THEOS/sdks/iPhoneOS16.5.sdk.tar.xz \
+              https://github.com/theos/sdks/releases/download/master-146e41f/iPhoneOS16.5.sdk.tar.xz
+            tar -xJf $THEOS/sdks/iPhoneOS16.5.sdk.tar.xz -C $THEOS/sdks
+          fi
+
+      - name: 🧩 Build dylib (no deb)
         run: |
           set -e
-          export THEOS="$GITHUB_WORKSPACE/theos"
+          export THEOS="$THEOS"
           export PATH="$THEOS/bin:$PATH"
           export LD_SHARED_CACHE_ELIGIBLE=NO
-          
-          # Build arm64
-          echo "🏗️ Building VCAM for arm64..."
-          make clean || true
-          make ARCHS=arm64
-          
-          # Build arm64e
-          echo "🏗️ Building VCAM for arm64e..."
-          make clean || true
-          make ARCHS=arm64e
 
-          # Merge fat dylib
-          echo "📦 Creating fat dylib..."
-          lipo -create \
-            "$THEOS/obj/arm64/VCAM.dylib" \
-            "$THEOS/obj/arm64e/VCAM.dylib" \
-            -output "$THEOS/obj/VCAM-fat.dylib"
-          echo "✅ Fat dylib created at $THEOS/obj/VCAM-fat.dylib"
+          echo "🏗️ Building dylib using Theos..."
+          make clean || true
+          make
+          echo "✅ dylib build finished"
 
-      - name: Upload VCAM fat dylib
+      - name: 📤 Upload dylib
         uses: actions/upload-artifact@v4
         with:
-          name: VCAM-fat-dylib
-          path: $GITHUB_WORKSPACE/theos/obj/VCAM-fat.dylib
+          name: VCAM-dylib
+          path: |
+            .theos/obj/**/VCAM.dylib
