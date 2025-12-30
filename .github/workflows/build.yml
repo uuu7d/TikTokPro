@@ -11,7 +11,7 @@ jobs:
     name: Build on macOS
     runs-on: macos-latest
     env:
-      SDKVERSION: latest
+      SDKVERSION: 18.0
       LD_SHARED_CACHE_ELIGIBLE: "NO"
 
     steps:
