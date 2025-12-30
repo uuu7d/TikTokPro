@@ -1,17 +1,9 @@
 #import <AVFoundation/AVFoundation.h>
 #import <objc/runtime.h>
 
-extern BOOL vcamMirror;
-extern BOOL vcamEnabled;
-@class VCAMSource;
-
 %hook AVCaptureVideoDataOutput
 - (void)setSampleBufferDelegate:(id)delegate queue:(dispatch_queue_t)queue {
     %orig;
-
-    static BOOL vcamHooked = NO;
-    if (vcamHooked) return;
-    vcamHooked = YES;
 
     SEL sel = @selector(captureOutput:didOutputSampleBuffer:fromConnection:);
     Method m = class_getInstanceMethod([delegate class], sel);
@@ -30,11 +22,11 @@ extern BOOL vcamEnabled;
             if (vcamEnabled) {
                 CMSampleBufferRef fake = [VCAMSource nextFrame:sb];
                 if (fake) {
-                    ((void(*)(id,SEL,id,CMSampleBufferRef,id)) origIMP)(self, sel, out, fake, conn);
+                    ((void(*)(id,SEL,id,CMSampleBufferRef,id))origIMP)(self, sel, out, fake, conn);
                     return;
                 }
             }
-            ((void(*)(id,SEL,id,CMSampleBufferRef,id)) origIMP)(self, sel, out, sb, conn);
+            ((void(*)(id,SEL,id,CMSampleBufferRef,id))origIMP)(self, sel, out, sb, conn);
         })
     );
 }

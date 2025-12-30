@@ -4,13 +4,15 @@
 #import <CoreVideo/CoreVideo.h>
 #import <QuartzCore/QuartzCore.h>
 
-#pragma mark - Defaults & Globals
+#pragma mark - Globals
 
+static BOOL vcamEnabled = NO;
 static BOOL vcamMirror = NO;
-static CIContext *vcamCIContext = nil;
 
-#define kVCAMVideoPath @"/var/mobile/Library/Caches/vcam.mov"
-#define kVCAMImagePath @"/var/mobile/Library/Caches/vcam.jpg"
+static NSString *vcamVideoPath = @"/var/mobile/Library/Caches/vcam.mov";
+static NSString *vcamImagePath = @"/var/mobile/Library/Caches/vcam.jpg";
+
+#pragma mark - Frame Source
 
 @interface VCAMSource : NSObject
 + (CMSampleBufferRef)nextFrame:(CMSampleBufferRef)origin;
@@ -19,30 +21,52 @@ static CIContext *vcamCIContext = nil;
 @implementation VCAMSource
 
 + (CMSampleBufferRef)imageFrame {
-    UIImage *img = [UIImage imageWithContentsOfFile:kVCAMImagePath];
+    UIImage *img = [UIImage imageWithContentsOfFile:vcamImagePath];
     if (!img) return nil;
 
     CIImage *ci = [[CIImage alloc] initWithImage:img];
+
     if (vcamMirror) {
         ci = [ci imageByApplyingTransform:
               CGAffineTransformTranslate(
                   CGAffineTransformMakeScale(-1, 1),
-                  -ci.extent.size.width, 0)];
+                  -ci.extent.size.width,
+                  0)];
     }
 
     CVPixelBufferRef pb = NULL;
-    CVPixelBufferCreate(kCFAllocatorDefault, img.size.width, img.size.height,
-                        kCVPixelFormatType_32BGRA, NULL, &pb);
+    CVPixelBufferCreate(
+        kCFAllocatorDefault,
+        img.size.width,
+        img.size.height,
+        kCVPixelFormatType_32BGRA,
+        NULL,
+        &pb
+    );
 
-    if (!vcamCIContext) vcamCIContext = [CIContext contextWithOptions:nil];
-    [vcamCIContext render:ci toCVPixelBuffer:pb];
+    CIContext *ctx = [CIContext context];
+    [ctx render:ci toCVPixelBuffer:pb];
 
     CMVideoFormatDescriptionRef desc = NULL;
-    CMVideoFormatDescriptionCreateForImageBuffer(kCFAllocatorDefault, pb, &desc);
+    CMVideoFormatDescriptionCreateForImageBuffer(
+        kCFAllocatorDefault,
+        pb,
+        &desc
+    );
 
-    CMSampleTimingInfo timing = {CMTimeMake(1, 30), kCMTimeZero, kCMTimeInvalid};
+    CMSampleTimingInfo timing = {CMTimeMake(1,30), kCMTimeZero, kCMTimeInvalid};
+
     CMSampleBufferRef sb = NULL;
-    CMSampleBufferCreateForImageBuffer(kCFAllocatorDefault, pb, true, NULL, NULL, desc, &timing, &sb);
+    CMSampleBufferCreateForImageBuffer(
+        kCFAllocatorDefault,
+        pb,
+        true,
+        NULL,
+        NULL,
+        desc,
+        &timing,
+        &sb
+    );
 
     return sb;
 }
@@ -52,7 +76,7 @@ static CIContext *vcamCIContext = nil;
     static AVAssetReaderTrackOutput *output = nil;
 
     if (!reader) {
-        AVAsset *asset = [AVAsset assetWithURL:[NSURL fileURLWithPath:kVCAMVideoPath]];
+        AVAsset *asset = [AVAsset assetWithURL:[NSURL fileURLWithPath:vcamVideoPath]];
         if (!asset) return fallback;
 
         reader = [AVAssetReader assetReaderWithAsset:asset error:nil];
@@ -61,8 +85,7 @@ static CIContext *vcamCIContext = nil;
 
         output = [[AVAssetReaderTrackOutput alloc]
                   initWithTrack:track
-                  outputSettings:@{(id)kCVPixelBufferPixelFormatTypeKey:@(kCVPixelFormatType_32BGRA)}];
-        output.alwaysCopiesSampleData = NO;
+                  outputSettings:@{ (id)kCVPixelBufferPixelFormatTypeKey:@(kCVPixelFormatType_32BGRA) }];
         [reader addOutput:output];
         [reader startReading];
     }
@@ -70,21 +93,23 @@ static CIContext *vcamCIContext = nil;
     CMSampleBufferRef sb = [output copyNextSampleBuffer];
     if (!sb) {
         reader = nil;
-        output = nil;
         return fallback;
     }
+
     return sb;
 }
 
 + (CMSampleBufferRef)nextFrame:(CMSampleBufferRef)origin {
-    if ([[NSFileManager defaultManager] fileExistsAtPath:kVCAMImagePath]) {
+    if ([[NSFileManager defaultManager] fileExistsAtPath:vcamImagePath]) {
         CMSampleBufferRef img = [self imageFrame];
         if (img) return img;
     }
-    if ([[NSFileManager defaultManager] fileExistsAtPath:kVCAMVideoPath]) {
+
+    if ([[NSFileManager defaultManager] fileExistsAtPath:vcamVideoPath]) {
         CMSampleBufferRef vid = [self videoFrame:origin];
         if (vid) return vid;
     }
+
     return origin;
 }
 
