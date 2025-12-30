@@ -1,17 +1,9 @@
-#import <UIKit/UIKit.h>
 #import <AVFoundation/AVFoundation.h>
 #import <CoreMedia/CoreMedia.h>
 #import <CoreVideo/CoreVideo.h>
 #import <QuartzCore/QuartzCore.h>
+#import <objc/runtime.h>
 #import "VCAMGlobals.h"
-
-#pragma mark - Globals
-
-// إزالة تعريف vcamEnabled هنا لأنه غير مستخدم في Core
-static BOOL vcamMirror = NO;
-
-static NSString *vcamVideoPath = @"/var/mobile/Library/Caches/vcam.mov";
-static NSString *vcamImagePath = @"/var/mobile/Library/Caches/vcam.jpg";
 
 #pragma mark - Frame Source
 
@@ -55,7 +47,11 @@ static NSString *vcamImagePath = @"/var/mobile/Library/Caches/vcam.jpg";
         &desc
     );
 
-    CMSampleTimingInfo timing = {CMTimeMake(1,30), kCMTimeZero, kCMTimeInvalid};
+    CMSampleTimingInfo timing = {
+        .duration = CMTimeMake(1,30),
+        .presentationTimeStamp = kCMTimeZero,
+        .decodeTimeStamp = kCMTimeInvalid
+    };
 
     CMSampleBufferRef sb = NULL;
     CMSampleBufferCreateForImageBuffer(
@@ -77,7 +73,8 @@ static NSString *vcamImagePath = @"/var/mobile/Library/Caches/vcam.jpg";
     static AVAssetReaderTrackOutput *output = nil;
 
     if (!reader) {
-        AVAsset *asset = [AVAsset assetWithURL:[NSURL fileURLWithPath:vcamVideoPath]];
+        AVAsset *asset =
+            [AVAsset assetWithURL:[NSURL fileURLWithPath:vcamVideoPath]];
         if (!asset) return fallback;
 
         reader = [AVAssetReader assetReaderWithAsset:asset error:nil];
@@ -85,8 +82,12 @@ static NSString *vcamImagePath = @"/var/mobile/Library/Caches/vcam.jpg";
         if (!track) return fallback;
 
         output = [[AVAssetReaderTrackOutput alloc]
-                  initWithTrack:track
-                  outputSettings:@{ (id)kCVPixelBufferPixelFormatTypeKey:@(kCVPixelFormatType_32BGRA) }];
+            initWithTrack:track
+            outputSettings:@{
+                (id)kCVPixelBufferPixelFormatTypeKey:
+                    @(kCVPixelFormatType_32BGRA)
+            }];
+
         [reader addOutput:output];
         [reader startReading];
     }

@@ -1,42 +1,39 @@
+#import <UIKit/UIKit.h>
 #import <AVFoundation/AVFoundation.h>
-#import <objc/runtime.h>
 #import "VCAMGlobals.h"
 
-%hook AVCaptureVideoDataOutput
-- (void)setSampleBufferDelegate:(id)delegate queue:(dispatch_queue_t)queue {
-    %orig;
+@interface VCAMRecorder : NSObject
++ (void)startRecording;
++ (void)stopRecording;
+@end
 
-    SEL sel = @selector(captureOutput:didOutputSampleBuffer:fromConnection:);
-    Method m = class_getInstanceMethod([delegate class], sel);
-    if (!m) return;
+@implementation VCAMRecorder
+static AVAssetWriter *writer = nil;
+static AVAssetWriterInput *input = nil;
 
-    IMP origIMP = method_getImplementation(m);
++ (void)startRecording {
+    if (writer) return;
 
-    method_setImplementation(
-        m,
-        imp_implementationWithBlock(^(
-            id self,
-            AVCaptureOutput *out,
-            CMSampleBufferRef sb,
-            AVCaptureConnection *conn
-        ) {
-            if (vcamEnabled) {
-                CMSampleBufferRef fake = [VCAMSource nextFrame:sb];
-                if (fake) {
-                    ((void(*)(id,SEL,id,CMSampleBufferRef,id))origIMP)(self, sel, out, fake, conn);
-                    return;
-                }
-            }
-            ((void(*)(id,SEL,id,CMSampleBufferRef,id))origIMP)(self, sel, out, sb, conn);
-        })
-    );
+    NSString *path = [NSTemporaryDirectory() stringByAppendingPathComponent:@"vcam_output.mp4"];
+    writer = [AVAssetWriter assetWriterWithURL:[NSURL fileURLWithPath:path] fileType:AVFileTypeMPEG4 error:nil];
+
+    input = [AVAssetWriterInput assetWriterInputWithMediaType:AVMediaTypeVideo outputSettings:@{
+        AVVideoCodecKey: AVVideoCodecTypeH264,
+        AVVideoWidthKey: @(UIScreen.mainScreen.bounds.size.width),
+        AVVideoHeightKey: @(UIScreen.mainScreen.bounds.size.height)
+    }];
+
+    [writer addInput:input];
+    [writer startWriting];
+    [writer startSessionAtSourceTime:kCMTimeZero];
 }
-%end
 
-%hook AVCaptureDeviceInput
-- (instancetype)initWithDevice:(AVCaptureDevice *)device
-                         error:(NSError **)error {
-    vcamMirror = (device.position == AVCaptureDevicePositionFront);
-    return %orig;
++ (void)stopRecording {
+    [input markAsFinished];
+    [writer finishWritingWithCompletionHandler:^{
+        NSLog(@"[VCAMRecorder] Recording saved to %@", writer.outputURL);
+        writer = nil;
+        input = nil;
+    }];
 }
-%end
+@end
