@@ -8,7 +8,7 @@ include $(THEOS)/makefiles/common.mk
 
 TWEAK_NAME = FileSaverTweak
 
-FileSaverTweak_FILES = Tweak.xm
+FileSaverTweak_FILES = VCAM.xm
 FileSaverTweak_FRAMEWORKS = UIKit AVFoundation Photos
 FileSaverTweak_PRIVATE_FRAMEWORKS = AppSupport
 FileSaverTweak_CFLAGS = -fobjc-arc
