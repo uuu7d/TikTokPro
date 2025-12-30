@@ -54,4 +54,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: VCAM-dylib
-          path: ${{ github.workspace }}/obj/arm64/VCAM.dylib
+          path: ${{ github.workspace }}/.theos/obj/arm64/VCAM.dylib
