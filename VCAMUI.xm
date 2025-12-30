@@ -22,7 +22,7 @@
 
 - (void)didMoveToSuperlayer {
     if (!vcamPreview) {
-        vcamPreview = [AVSampleBufferDisplayLayer new];
+		vcamPreview = [AVCaptureVideoPreviewLayer layer];
         vcamPreview.videoGravity = AVLayerVideoGravityResizeAspectFill;
     }
 
