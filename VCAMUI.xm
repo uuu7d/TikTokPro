@@ -1,6 +1,7 @@
 #import <UIKit/UIKit.h>
 #import <QuartzCore/QuartzCore.h>
 #import <AVFoundation/AVFoundation.h>  // تصحيح الاستيراد الكامل
+#import "VCAMGlobals.h"
 
 static AVSampleBufferDisplayLayer *vcamPreview = nil;
 static UIVisualEffectView *vcamBlur = nil;

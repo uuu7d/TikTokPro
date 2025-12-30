@@ -1,5 +1,6 @@
 #import <AVFoundation/AVFoundation.h>
 #import <objc/runtime.h>
+#import "VCAMGlobals.h"
 
 %hook AVCaptureVideoDataOutput
 - (void)setSampleBufferDelegate:(id)delegate queue:(dispatch_queue_t)queue {

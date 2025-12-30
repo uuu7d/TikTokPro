@@ -3,6 +3,7 @@
 #import <CoreMedia/CoreMedia.h>
 #import <CoreVideo/CoreVideo.h>
 #import <QuartzCore/QuartzCore.h>
+#import "VCAMGlobals.h"
 
 #pragma mark - Globals
 
