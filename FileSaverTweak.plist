@@ -1,5 +1,0 @@
-{
-    Filter = {
-        Bundles = ("com.shuggr.Shuggr", "com.shuggr.Shuggr1");
-    };
-}

@@ -1,9 +1,0 @@
-Package: com.fuckme.iamhorny
-Name: Sandbox Tool
-Depends: mobilesubstrate
-Version: 10.0
-Architecture: iphoneos-arm
-Description: أداة لتصفح ملفات التطبيق (استيراد، تعديل، حذف) من داخل التطبيق مباشرة.
-Maintainer: Your Name
-Author: Your Name
-Section: Tweaks
