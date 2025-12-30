@@ -2,6 +2,8 @@
 #import <AVFoundation/AVFoundation.h>
 #import <QuartzCore/QuartzCore.h>
 #import "VCAMGlobals.h"
+#import "VCAMCore.h" // << هذا مهم
+
 
 #pragma mark - Stream Injection
 
