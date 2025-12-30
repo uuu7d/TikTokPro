@@ -12,6 +12,7 @@ jobs:
     runs-on: macos-latest
     env:
       THEOS: ${{ github.workspace }}/theos
+      SDKVERSION: 16.5
       LD_SHARED_CACHE_ELIGIBLE: "NO"
 
     steps:
