@@ -2,9 +2,9 @@
 #import <UIKit/UIKit.h>
 #import <AVFoundation/AVFoundation.h>
 
+// VCAMGlobals.h
 extern BOOL vcamEnabled;
-extern BOOL vcamMirror;
+extern UIView *vcamBlur;
+extern AVCaptureVideoPreviewLayer *vcamPreview;
 extern NSString *vcamVideoPath;
 extern NSString *vcamImagePath;
-extern AVSampleBufferDisplayLayer *vcamPreview;
-extern UIVisualEffectView *vcamBlur;
